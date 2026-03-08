@@ -438,7 +438,7 @@ useEffect(() => {
               <button onClick={() => updateByBranch((prev) => { const copy = deepClone(prev); (copy[selectedBranchId] ||= deepClone(branchState)).tables.push({ id: uid("mesa"), name: `Mesa ${(copy[selectedBranchId].tables.length) + 1}`, status: 'libre', session: null }); return copy; })} className="px-3 py-1.5 rounded-xl bg-white border shadow-sm text-sm hover:bg-neutral-50">+ Mesa</button>
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          <div className="grid-uniform">
             {(branchState.tables || []).map((t) => (
               <MesaCard key={t.id} table={t} config={config}
                 onStart={() => startTable(t.id)} onStop={() => stopTable(t.id)} onRename={(name) => updateByBranch((prev) => { const copy = deepClone(prev); const tab = (copy[selectedBranchId] ||= deepClone(branchState)).tables.find((x) => x.id === t.id); if (tab) tab.name = name; return copy; })}
@@ -589,7 +589,7 @@ function MesaCard({ table, config, onStart, onStop, onRename, inventory, onAddIt
   useEffect(() => { const i = setInterval(() => setT(Date.now()), 1000); return () => clearInterval(i) }, [])
   const tarifa = useMemo(() => { if (!table.session) return null; const extraPause = isPaused ? (Date.now() - (pausedAt || Date.now())) : 0; return computeCharge({ start: start, end: Date.now(), ratePerHour: config.ratePerHour, minMinutes: config.minMinutes, fractionMinutes: config.fractionMinutes, pausedMs: (pausedMs || 0) + extraPause }); }, [table.session, config, t]);
   return (
-    <div className={`rounded-2xl border shadow-sm p-3 ${table.status === "ocupada" ? "bg-emerald-50 border-emerald-200" : "bg-white"}`}>
+    <div className={`card mesa-card p-3 ${table.status === "ocupada" ? "bg-emerald-50 border-emerald-200" : ""}`}>
       <div className="flex items-center justify-between mb-2">
         <input className="font-semibold bg-transparent focus:outline-none rounded px-1 hover:bg-neutral-100" value={table.name} onChange={(e) => onRename(e.target.value)} />
         <span className={`text-xs px-2 py-0.5 rounded-full border ${table.status === "ocupada" ? "bg-emerald-100 text-emerald-700" : "bg-neutral-100 text-neutral-700"}`}>{table.status}</span>
@@ -604,8 +604,51 @@ function MesaCard({ table, config, onStart, onStop, onRename, inventory, onAddIt
 
       {table.status === "ocupada" && table.session && (
         <div className="space-y-2">
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <div className="bg-white rounded-xl p-2 border">
+          <div className="mesa-body text-sm">
+  <div className="card p-2">
+    ...
+    <div className="mesa-actions mt-2">
+      <button className="btn" onClick={onPauseResume}>{table.session.isPaused ? 'Retomar' : 'Pausar'}</button>
+      <button className="btn" onClick={onMove}>Mover consumo</button>
+      <button className="btn" onClick={onMesaDiscount}>Desc. mesa</button>
+    </div>
+  </div>
+
+  <div className="card p-2">
+    <div className="font-medium mb-1">Cliente</div>
+    <input className="w-full border rounded-lg px-2 py-1 text-sm mb-2" placeholder="Nombre del cliente (opcional)" value={table.session.customerName} onChange={(e) => onCustomerChange(e.target.value)} />
+    <div className="font-medium mb-1">Productos</div>
+
+    <div className="flex flex-wrap gap-1 mb-2">
+      {inventory.map((it) => (
+        <button
+          key={it.id}
+          disabled={it.stock <= 0}
+          title={it.stock <= 0 ? "Sin stock" : `Agregar ${it.name}`}
+          className={`btn ${it.stock <= 0 ? "opacity-50" : ""}`}
+          onClick={() => onAddItem(it.id)}
+        >
+          {it.name}
+        </button>
+      ))}
+    </div>
+
+    <div className="scroll-y max-h-28 pr-1 space-y-1">
+      {table.session.items.length === 0 && <div className="text-xs text-neutral-500">Sin productos</div>}
+      {table.session.items.map((it) => (
+        <div key={it.itemId} className="grid grid-cols-12 items-center text-xs gap-1">
+          <span className="col-span-6 truncate">{it.name} × {it.qty}</span>
+          <span className="col-span-3 text-right text-neutral-500">{`Bs ${(it.price * it.qty).toFixed(2)}`}</span>
+          <div className="col-span-3 flex gap-1 justify-end">
+            <button className="btn" onClick={() => onRemoveItem(it.itemId)}>-</button>
+            <button className="btn" onClick={() => onItemDiscount(it.itemId)}>Desc</button>
+          </div>
+          {it.disc > 0 && <div className="col-span-12 text-[10px] text-rose-600">Descuento ítem: {`Bs ${it.disc.toFixed(2)}`}</div>}
+        </div>
+      ))}
+    </div>
+  </div>
+</div>
               <div className="flex justify-between"><span>Inicio</span><b>{fmtTime(table.session.start)}</b></div>
               <div className="flex justify-between"><span>Cronómetro</span><b>{(() => { const ms = Math.max(0, (Date.now() - start - (pausedMs || 0) - (isPaused ? (Date.now() - (pausedAt || Date.now())) : 0))); const sec = Math.floor(ms/1000); const mm = String(Math.floor(sec/60)).padStart(2,'0'); const ss = String(sec%60).padStart(2,'0'); return `${mm}:${ss}` })()}</b></div>
               <div className="flex justify-between"><span>Facturable</span><b>{tarifa?.rounded ?? 0} min</b></div>
@@ -657,7 +700,7 @@ function MesaCard({ table, config, onStart, onStop, onRename, inventory, onAddIt
 function InventoryCard({ branchState, setByBranch, selectedBranchId, ingresoStock, egresoStockManual }) {
   const [viewKardexFor, setViewKardexFor] = useState('');
   return (
-    <div className="bg-white rounded-2xl shadow-sm border p-4">
+    <div className="card p-4">
       <div className="flex items-center justify-between mb-2">
         <h3 className="font-semibold">Inventario</h3>
         <div className="flex items-center gap-2">
