@@ -458,13 +458,78 @@ useEffect(() => {
           {/* Tarifas */}
           <div className="bg-white rounded-2xl shadow-sm border p-4">
             <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Tarifas</h3>{!canEditTariff && <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border">Solo visualización</span>}</div>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <label className="flex flex-col"><span>Tarifa (Bs/h)</span><input type="number" className="border rounded-lg px-2 py-1" value={config.ratePerHour} disabled={!canEditTariff} onChange={(e) => setConfig((c) => ({ ...c, ratePerHour: Number(e.target.value) }))} /></label>
-              <label className="flex flex-col"><span>Fracción (min)</span><input type="number" className="border rounded-lg px-2 py-1" value={config.fractionMinutes} disabled={!canEditTariff} onChange={(e) => setConfig((c) => ({ ...c, fractionMinutes: Number(e.target.value) }))} /></label>
-              <label className="flex flex-col"><span>Mínimo (min)</span><input type="number" className="border rounded-lg px-2 py-1" value={config.minMinutes} disabled={!canEditTariff} onChange={(e) => setConfig((c) => ({ ...c, minMinutes: Number(e.target.value) }))} /></label>
-              <label className="flex items-center justify-between"><span>Redondeo 0.49/0.50</span><input type="checkbox" checked={config.roundingEnabled} onChange={(e) => setConfig((c) => ({ ...c, roundingEnabled: e.target.checked }))} /></label>
-            </div>
+           <div className="mesa-body text-sm">
+  {/* Columna izquierda: tiempo / cronómetro / tarifa / acciones */}
+  <div className="card p-2">
+    {/* Deja aquí tu contenido existente de esta columna:
+        - Inicio
+        - Cronómetro
+        - Facturable
+        - Importe
+        Puedes conservar los <div> y textos tal cual estaban. */}
+
+    {/* Acciones: ahora no se enciman */}
+    <div className="mesa-actions mt-2">
+      <button className="btn" onClick={onPauseResume}>
+        {table.session.isPaused ? 'Retomar' : 'Pausar'}
+      </button>
+      <button className="btn" onClick={onMove}>Mover consumo</button>
+      <button className="btn" onClick={onMesaDiscount}>Desc. mesa</button>
+    </div>
+  </div>
+
+  {/* Columna derecha: cliente / productos */}
+  <div className="card p-2">
+    <div className="font-medium mb-1">Cliente</div>
+    <input
+      className="w-full border rounded-lg px-2 py-1 text-sm mb-2"
+      placeholder="Nombre del cliente (opcional)"
+      value={table.session.customerName}
+      onChange={(e) => onCustomerChange(e.target.value)}
+    />
+
+    <div className="font-medium mb-1">Productos</div>
+
+    {/* Botones de productos: se acomodan sin encimarse */}
+    <div className="flex flex-wrap gap-1 mb-2">
+      {inventory.map((it) => (
+        <button
+          key={it.id}
+          disabled={it.stock <= 0}
+          title={it.stock <= 0 ? "Sin stock" : `Agregar ${it.name}`}
+          className={`btn ${it.stock <= 0 ? "opacity-50" : ""}`}
+          onClick={() => onAddItem(it.id)}
+        >
+          {it.name}
+        </button>
+      ))}
+    </div>
+
+    {/* Lista de ítems con scroll interno */}
+    <div className="scroll-y max-h-28 pr-1 space-y-1">
+      {table.session.items.length === 0 && (
+        <div className="text-xs text-neutral-500">Sin productos</div>
+      )}
+      {table.session.items.map((it) => (
+        <div key={it.itemId} className="grid grid-cols-12 items-center text-xs gap-1">
+          <span className="col-span-6 truncate">{it.name} × {it.qty}</span>
+          <span className="col-span-3 text-right text-neutral-500">
+            {`Bs ${(it.price * it.qty).toFixed(2)}`}
+          </span>
+          <div className="col-span-3 flex gap-1 justify-end">
+            <button className="btn" onClick={() => onRemoveItem(it.itemId)}>-</button>
+            <button className="btn" onClick={() => onItemDiscount(it.itemId)}>Desc</button>
           </div>
+          {it.disc > 0 && (
+            <div className="col-span-12 text-[10px] text-rose-600">
+              Descuento ítem: {`Bs ${it.disc.toFixed(2)}`}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  </div>
+</div>
 
           {/* Caja */}
           <div className="bg-white rounded-2xl shadow-sm border p-4">
@@ -524,14 +589,78 @@ useEffect(() => {
           {/* Configuración */}
           <div className="bg-white rounded-2xl shadow-sm border p-4">
             <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Configuración</h3></div>
-            <div className="grid grid-cols-1 gap-2 text-sm">
-              <label className="flex items-center justify-between gap-2"><span>Impresión directa (agente ESC/POS)</span><input type="checkbox" checked={config.agentPrintEnabled} onChange={(e) => setConfig((c) => ({ ...c, agentPrintEnabled: e.target.checked }))} /></label>
-              <label className="flex items-center justify-between gap-2"><span>PIN de supervisor</span><input type="password" className="border rounded-lg px-2 py-1" value={config.supervisorPin} onChange={(e) => setConfig((c) => ({ ...c, supervisorPin: e.target.value }))} /></label>
-              <label className="flex flex-col"><span>Encabezado de ticket</span><input className="border rounded-lg px-2 py-1" value={config.ticketHeader} onChange={(e) => setConfig((c) => ({ ...c, ticketHeader: e.target.value }))} placeholder="Ej.: BILLAR JADE — Sucursal Centro" /></label>
-              <label className="flex flex-col"><span>Logo del ticket (PNG/JPG)</span><input type="file" accept="image/*" onChange={(e) => handleLogoUpload(e, setConfig)} /></label>
-              {config.ticketLogo && <img src={config.ticketLogo} alt="Logo" className="h-16 object-contain border rounded p-1" />}
-            </div>
+           <div className="mesa-body text-sm">
+  {/* Columna izquierda: tiempo / cronómetro / tarifa / acciones */}
+  <div className="card p-2">
+    {/* ⬇️ Pega aquí tu contenido que ya estaba en la columna izquierda:
+        - Inicio
+        - Cronómetro
+        - Facturable
+        - Importe (tarifa)
+        Puedes copiar y pegar tal cual tus <div> y textos originales de esa columna. */}
+
+    {/* Acciones: ahora no se enciman */}
+    <div className="mesa-actions mt-2">
+      <button className="btn" onClick={onPauseResume}>
+        {table.session.isPaused ? 'Retomar' : 'Pausar'}
+      </button>
+      <button className="btn" onClick={onMove}>Mover consumo</button>
+      <button className="btn" onClick={onMesaDiscount}>Desc. mesa</button>
+    </div>
+  </div>
+
+  {/* Columna derecha: cliente / productos */}
+  <div className="card p-2">
+    <div className="font-medium mb-1">Cliente</div>
+    <input
+      className="w-full border rounded-lg px-2 py-1 text-sm mb-2"
+      placeholder="Nombre del cliente (opcional)"
+      value={table.session.customerName}
+      onChange={(e) => onCustomerChange(e.target.value)}
+    />
+
+    <div className="font-medium mb-1">Productos</div>
+
+    {/* Botones de productos: se acomodan sin encimarse */}
+    <div className="flex flex-wrap gap-1 mb-2">
+      {inventory.map((it) => (
+        <button
+          key={it.id}
+          disabled={it.stock <= 0}
+          title={it.stock <= 0 ? "Sin stock" : `Agregar ${it.name}`}
+          className={`btn ${it.stock <= 0 ? "opacity-50" : ""}`}
+          onClick={() => onAddItem(it.id)}
+        >
+          {it.name}
+        </button>
+      ))}
+    </div>
+
+    {/* Lista de ítems con scroll interno */}
+    <div className="scroll-y max-h-28 pr-1 space-y-1">
+      {table.session.items.length === 0 && (
+        <div className="text-xs text-neutral-500">Sin productos</div>
+      )}
+      {table.session.items.map((it) => (
+        <div key={it.itemId} className="grid grid-cols-12 items-center text-xs gap-1">
+          <span className="col-span-6 truncate">{it.name} × {it.qty}</span>
+          <span className="col-span-3 text-right text-neutral-500">
+            {`Bs ${(it.price * it.qty).toFixed(2)}`}
+          </span>
+          <div className="col-span-3 flex gap-1 justify-end">
+            <button className="btn" onClick={() => onRemoveItem(it.itemId)}>-</button>
+            <button className="btn" onClick={() => onItemDiscount(it.itemId)}>Desc</button>
           </div>
+          {it.disc > 0 && (
+            <div className="col-span-12 text-[10px] text-rose-600">
+              Descuento ítem: {`Bs ${it.disc.toFixed(2)}`}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  </div>
+</div>
 
 
           {/* Usuarios (solo admin) */}
