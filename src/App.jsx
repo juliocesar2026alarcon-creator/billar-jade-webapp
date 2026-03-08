@@ -300,9 +300,13 @@ export default function App() {
   const abrirCaja = (initialCash) => { updateByBranch((copy) => { const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState)); if (st.cash.currentShift) return copy; st.cash.currentShift = { id: uid("turno"), openedAt: nowTs(), openedBy: authUser?.username || "", initialCash: Number(initialCash) || 0, movements: [] }; return copy; }); };
   const movimientoCaja = (type, concept, amount) => { updateByBranch((copy) => { const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState)); if (!st.cash.currentShift) return copy; st.cash.currentShift.movements.push({ id: uid("mov"), type, at: nowTs(), concept, amount: Number(amount) || 0, by: authUser?.username || "" }); return copy; }); };
   const cerrarCaja = () => { updateByBranch((copy) => { const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState)); if (!st.cash.currentShift) return copy; const cur = st.cash.currentShift; cur.closedAt = nowTs(); cur.closedBy = authUser?.username || "";
-    const ingresos = cur.movements.filter((m) => m.type === "venta" o
-r m.type === "ingreso").reduce((a, m) => a + m.amount, 0);
-    const egresos = cur.movements.filter((m) => m.type === "egreso").reduce((a, m) => a + m.amount, 0);
+    const ingresos = turno.movements
+     .filter((m) => m.type === "venta" || m.type === "ingreso")
+     .reduce((a, m) => a + m.amount, 0);
+
+    const egresos = turno.movements
+     .filter((m) => m.type === "egreso")
+     .reduce((a, m) => a + m.amount, 0);
     const totalCaja = cur.initialCash + ingresos - egresos;
     const ventas = cur.movements.filter((m) => m.type === "venta");
     const cierre = { id: uid("cierre"), branchId: selectedBranchId, branchName: selectedBranch?.name || "", openedAt: cur.openedAt, closedAt: cur.closedAt, openedBy: cur.openedBy, closedBy: cur.closedBy, initialCash: cur.initialCash, ingresos, egresos, totalCaja, ventasCount: ventas.length, ventasTotal: ventas.reduce((a, m) => a + m.amount, 0) };
