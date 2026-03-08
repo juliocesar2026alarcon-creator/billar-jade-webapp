@@ -7,6 +7,24 @@
     <title>Control de Billar — Billar Jade</title>
     <!-- Tailwind por CDN (simple). Si luego quieres, lo pasamos a build de Tailwind CLI. -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+  /* Ajustes finos de UI para orden y legibilidad */
+  .card { border-radius: 1rem; border: 1px solid rgb(231 231 231); background: #fff; }
+  .card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom: .5rem; }
+  .btn { border:1px solid rgb(224 224 224); background:#fff; border-radius:.6rem; padding:.35rem .6rem; font-size:.8rem; }
+  .btn-primary { background:#059669; color:#fff; border:0; }
+  .btn-danger { background:#fee2e2; color:#b91c1c; border-color:#fecaca; }
+  .grid-uniform { display:grid; grid-template-columns: repeat( auto-fill, minmax(220px, 1fr) ); gap: .75rem; }
+  .mesa-card { display:flex; flex-direction:column; min-height: 210px; } /* todas con altura base similar */
+  .mesa-body { display:grid; grid-template-columns: 1fr 1fr; gap:.5rem; }
+  .mesa-actions { display:flex; gap:.5rem; flex-wrap:wrap; } /* evita superposición */
+  .scroll-y { overflow:auto; }
+  .text-tight { line-height: 1.15; }
+  @media (max-width: 640px) {
+    .mesa-body { grid-template-columns: 1fr; } /* apila en móvil */
+    .btn { width: 100%; }                      /* botones a ancho completo en móvil */
+  }
+</style>
   </head>
   <body class="bg-neutral-50">
     <div id="root"></div>
