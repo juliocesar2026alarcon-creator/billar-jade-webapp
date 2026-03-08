@@ -1,18 +1,13 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { deepClone } from './safeClone.js'
 
 /**
- * Control de Billar — v4
+ * Control de Billar — v4 (Patch v1)
  *
- * Nuevo en esta versión según solicitud:
- * 1) **Kardex (entradas/salidas) y costo promedio** por producto.
- * 2) **Descuentos** por mesa (total) y por producto **con PIN de supervisor**.
- * 3) **Reportes por rango de fechas** + filtros por **cajero, mesa y producto**; totales de **margen** (ventas - costo).
- * 4) **Pausar/retomar mesa** y **mover consumo** entre mesas.
- * 5) **Logo en ticket** (subida + vista previa) y **impresión directa** vía **agente ESC/POS** opcional (fallback a print del navegador).
- * 6) En Reportes, **solo Administrador** puede **editar/borrar** sesiones (para corregir pruebas/errores).
- * 7) **Usuarios por sucursal** y **cambio de contraseña**. El cajero queda fijado a su sucursal.
- *
- * Notas de DEMO: persistencia en localStorage. PIN supervisor por defecto: 4321.
+ * Parchea:
+ * - Clonado seguro (evita problemas de structuredClone y estados no serializables)
+ * - Fallbacks para estados iniciales
+ * - ErrorBoundary en el root para evitar pantallas en blanco si algo falla
  */
 
 // ======= Utilidades =======
@@ -21,7 +16,6 @@ const to2 = (n) => Number(n || 0).toFixed(2);
 const fmtTime = (d) => new Date(d).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const fmtTimeSec = (d) => new Date(d).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 const fmtDate = (d) => new Date(d).toLocaleDateString();
-const fmtISO = (d) => new Date(d).toISOString();
 const fmtISODate = (d) => new Date(d).toISOString().slice(0, 10);
 const nowTs = () => Date.now();
 
@@ -73,7 +67,6 @@ const LS_KEY = "billiards_app_state_v4";
 const AUTH_KEY = "billiards_app_auth_v4";
 const USERS_KEY = "billiards_app_users_v4";
 
-
 function loadState() { try { const raw = localStorage.getItem(LS_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; } }
 function saveState(state) { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch {} }
 function loadAuth() { try { const raw = localStorage.getItem(AUTH_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; } }
@@ -85,6 +78,7 @@ const DEFAULT_USERS = [
   { id: uid("usr"), username: "admin", password: "123456", role: "Administrador", branchId: "jade", active: true },
   { id: uid("usr"), username: "cajero", password: "123456", role: "Cajero", branchId: "jade", active: true },
 ];
+
 // ======= App principal =======
 export default function App() {
   // Auth
@@ -103,42 +97,54 @@ export default function App() {
       init[b.id] = {
         tables: makeDefaultTables(defaultConfig.tablesPerBranch),
         inventory: [...defaultInventory],
-        kardex: [], // {id,itemId,name,at,type,qty,unitCost,ref}
+        kardex: [],
         cash: { currentShift: null, shifts: [], closures: [] },
-        sessions: [], // sesiones cerradas
+        sessions: [],
       };
     }
     return init;
   });
 
-  // Cargar estado previo
+  // Cargar estado previo (si existe)
   useEffect(() => {
     const stored = loadState();
-    if (stored) {
-      setBranches(stored.branches || defaultBranches);
-      setSelectedBranchId(stored.selectedBranchId || defaultBranches[0].id);
-      setConfig(stored.config || defaultConfig);
-      setByBranch(stored.byBranch || byBranch);
+    if (stored && typeof stored === 'object') {
+      try {
+        if (stored.branches) setBranches(stored.branches);
+        if (stored.selectedBranchId) setSelectedBranchId(stored.selectedBranchId);
+        if (stored.config) setConfig(stored.config);
+        if (stored.byBranch) setByBranch(stored.byBranch);
+      } catch(e){ console.warn('Estado previo no válido, se ignora.') }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
   useEffect(() => { saveState({ authUser, branches, selectedBranchId, config, byBranch }); }, [authUser, branches, selectedBranchId, config, byBranch]);
 
-  const selectedBranch = branches.find((b) => b.id === selectedBranchId);
-  const branchState = byBranch[selectedBranchId];
+  const selectedBranch = branches.find((b) => b.id === selectedBranchId) || branches[0] || { id: 'jade', name: 'BILLAR JADE' };
+  const branchState = byBranch[selectedBranchId] || { tables: [], inventory: [...defaultInventory], kardex: [], cash: { currentShift: null, shifts: [], closures: [] }, sessions: [] };
 
   // Reloj
   const [tick, setTick] = useState(nowTs());
   useEffect(() => { const t = setInterval(() => setTick(nowTs()), 1000); return () => clearInterval(t); }, []);
+
+  // ======= Helpers de actualización segura =======
+  const updateByBranch = (updater) => {
+    setByBranch((prev) => {
+      const base = deepClone(prev || {});
+      const res = updater(base) || base;
+      return res;
+    })
+  }
 
   // ======= Inventario & Kardex =======
   const pushKardex = (st, { itemId, name, type, qty, unitCost, ref }) => {
     st.kardex.push({ id: uid('kx'), itemId, name, at: nowTs(), type, qty, unitCost: Number(unitCost || 0), ref });
   };
   const ingresoStock = (item, qty, unitCost) => {
-    setByBranch((prev) => {
-      const copy = structuredClone(prev); const st = copy[selectedBranchId];
-      const inv = st.inventory.find((x) => x.id === item.id); if (!inv) return prev;
+    updateByBranch((copy) => {
+      const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState));
+      const inv = st.inventory.find((x) => x.id === item.id); if (!inv) return copy;
       const curVal = inv.cost * inv.stock;
       const newStock = inv.stock + qty;
       const newCost = newStock > 0 ? (curVal + (qty * unitCost)) / newStock : inv.cost;
@@ -148,9 +154,9 @@ export default function App() {
     });
   };
   const egresoStockManual = (item, qty, note = 'Ajuste') => {
-    setByBranch((prev) => {
-      const copy = structuredClone(prev); const st = copy[selectedBranchId];
-      const inv = st.inventory.find((x) => x.id === item.id); if (!inv) return prev;
+    updateByBranch((copy) => {
+      const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState));
+      const inv = st.inventory.find((x) => x.id === item.id); if (!inv) return copy;
       inv.stock = Math.max(0, inv.stock - qty);
       pushKardex(st, { itemId: inv.id, name: inv.name, type: note, qty: -qty, unitCost: inv.cost, ref: null });
       return copy;
@@ -160,9 +166,10 @@ export default function App() {
 
   // ======= Mesas =======
   const startTable = (tableId) => {
-    setByBranch((prev) => {
-      const copy = structuredClone(prev); const st = copy[selectedBranchId]; const t = st.tables.find((x) => x.id === tableId);
-      if (!t || t.status === "ocupada") return prev;
+    updateByBranch((copy) => {
+      const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState));
+      const t = st.tables.find((x) => x.id === tableId);
+      if (!t || t.status === "ocupada") return copy;
       t.status = "ocupada";
       t.session = { id: uid("ses"), start: nowTs(), customerName: "", items: [], notes: "", createdBy: authUser?.username, pausedMs: 0, isPaused: false, pausedAt: null, discountTotal: 0 };
       return copy;
@@ -170,9 +177,10 @@ export default function App() {
   };
 
   const pauseResumeTable = (tableId) => {
-    setByBranch((prev) => {
-      const copy = structuredClone(prev); const st = copy[selectedBranchId]; const t = st.tables.find((x) => x.id === tableId);
-      if (!t || t.status !== 'ocupada' || !t.session) return prev;
+    updateByBranch((copy) => {
+      const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState));
+      const t = st.tables.find((x) => x.id === tableId);
+      if (!t || t.status !== 'ocupada' || !t.session) return copy;
       if (!t.session.isPaused) { t.session.isPaused = true; t.session.pausedAt = nowTs(); }
       else { t.session.isPaused = false; t.session.pausedMs += (nowTs() - (t.session.pausedAt || nowTs())); t.session.pausedAt = null; }
       return copy;
@@ -182,36 +190,36 @@ export default function App() {
   const moveSessionToTable = (fromId) => {
     const toName = prompt('Mover a mesa (nombre exacto, ej.: "Mesa 5")');
     if (!toName) return;
-    setByBranch((prev) => {
-      const copy = structuredClone(prev); const st = copy[selectedBranchId];
+    updateByBranch((copy) => {
+      const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState));
       const from = st.tables.find((x) => x.id === fromId);
       const to = st.tables.find((x) => x.name.trim().toLowerCase() === toName.trim().toLowerCase());
-      if (!from || !to) { alert('Mesa destino no encontrada'); return prev; }
-      if (to.status !== 'libre') { alert('La mesa destino no está libre'); return prev; }
+      if (!from || !to) { alert('Mesa destino no encontrada'); return copy; }
+      if (to.status !== 'libre') { alert('La mesa destino no está libre'); return copy; }
       to.status = 'ocupada'; to.session = from.session; from.status = 'libre'; from.session = null; alert(`Consumo movido a ${to.name}`);
       return copy;
     });
   };
 
-
   const addItemToTable = (tableId, itemId) => {
-    setByBranch((prev) => {
-      const copy = structuredClone(prev); const st = copy[selectedBranchId]; const t = st.tables.find((x) => x.id === tableId);
-      if (!t || t.status !== "ocupada") return prev; const inv = st.inventory.find((i) => i.id === itemId); if (!inv || inv.stock <= 0) return prev;
+    updateByBranch((copy) => {
+      const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState));
+      const t = st.tables.find((x) => x.id === tableId);
+      if (!t || t.status !== "ocupada") return copy; const inv = st.inventory.find((i) => i.id === itemId); if (!inv || inv.stock <= 0) return copy;
       inv.stock -= 1;
       const existing = t.session.items.find((it) => it.itemId === itemId);
       if (existing) { existing.qty += 1; existing.cost = inv.cost; }
       else t.session.items.push({ itemId, name: inv.name, price: inv.price, cost: inv.cost, qty: 1, disc: 0 });
-      // Kardex de venta
       pushKardex(st, { itemId: inv.id, name: inv.name, type: 'Venta', qty: -1, unitCost: inv.cost, ref: t.session.id });
       return copy;
     });
   };
   const removeItemFromTable = (tableId, itemId) => {
-    setByBranch((prev) => {
-      const copy = structuredClone(prev); const st = copy[selectedBranchId]; const t = st.tables.find((x) => x.id === tableId);
-      if (!t || t.status !== "ocupada") return prev; const inv = st.inventory.find((i) => i.id === itemId);
-      const existing = t.session.items.find((it) => it.itemId === itemId); if (!existing) return prev;
+    updateByBranch((copy) => {
+      const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState));
+      const t = st.tables.find((x) => x.id === tableId);
+      if (!t || t.status !== "ocupada") return copy; const inv = st.inventory.find((i) => i.id === itemId);
+      const existing = t.session.items.find((it) => it.itemId === itemId); if (!existing) return copy;
       existing.qty -= 1; if (inv) inv.stock += 1; pushKardex(st, { itemId: inv.id, name: inv.name, type: 'Devolución', qty: +1, unitCost: inv.cost, ref: t.session.id });
       if (existing.qty <= 0) t.session.items = t.session.items.filter((it) => it.itemId !== itemId);
       return copy;
@@ -221,9 +229,10 @@ export default function App() {
   const applyItemDiscount = (tableId, itemId, pin) => {
     if (pin !== config.supervisorPin) { alert('PIN incorrecto'); return; }
     const val = Number(prompt('Descuento por ÍTEM (Bs):', '0') || 0);
-    setByBranch((prev) => {
-      const copy = structuredClone(prev); const st = copy[selectedBranchId]; const t = st.tables.find((x) => x.id === tableId);
-      if (!t || !t.session) return prev; const it = t.session.items.find((x) => x.itemId === itemId); if (!it) return prev;
+    updateByBranch((copy) => {
+      const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState));
+      const t = st.tables.find((x) => x.id === tableId);
+      if (!t || !t.session) return copy; const it = t.session.items.find((x) => x.itemId === itemId); if (!it) return copy;
       it.disc = Math.max(0, val);
       return copy;
     });
@@ -231,18 +240,18 @@ export default function App() {
   const applyMesaDiscount = (tableId, pin) => {
     if (pin !== config.supervisorPin) { alert('PIN incorrecto'); return; }
     const val = Number(prompt('Descuento TOTAL de la mesa (Bs):', '0') || 0);
-    setByBranch((prev) => {
-      const copy = structuredClone(prev); const st = copy[selectedBranchId]; const t = st.tables.find((x) => x.id === tableId);
-      if (!t || !t.session) return prev; t.session.discountTotal = Math.max(0, val); return copy;
+    updateByBranch((copy) => {
+      const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState));
+      const t = st.tables.find((x) => x.id === tableId);
+      if (!t || !t.session) return copy; t.session.discountTotal = Math.max(0, val); return copy;
     });
   };
   const stopTable = (tableId, { imprimir = true } = {}) => {
-    setByBranch((prev) => {
-      const copy = structuredClone(prev); const st = copy[selectedBranchId]; const t = st.tables.find((x) => x.id === tableId);
-      if (!t || t.status !== "ocupada") return prev;
-      if (t.session.isPaused) { // reanudar para cerrar
-        t.session.isPaused = false; t.session.pausedMs += (nowTs() - (t.session.pausedAt || nowTs())); t.session.pausedAt = null;
-      }
+    updateByBranch((copy) => {
+      const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState));
+      const t = st.tables.find((x) => x.id === tableId);
+      if (!t || t.status !== "ocupada") return copy;
+      if (t.session.isPaused) { t.session.isPaused = false; t.session.pausedMs += (nowTs() - (t.session.pausedAt || nowTs())); t.session.pausedAt = null; }
       const end = nowTs();
       const tarifa = computeCharge({ start: t.session.start, end, ratePerHour: config.ratePerHour, minMinutes: config.minMinutes, fractionMinutes: config.fractionMinutes, pausedMs: t.session.pausedMs });
       const productosBruto = t.session.items.reduce((acc, it) => acc + (it.price * it.qty), 0);
@@ -270,7 +279,7 @@ export default function App() {
         costoProductos: Number(to2(costoProductos)),
         discountMesa: Number(to2(t.session.discountTotal || 0)),
         totalRaw: Number(to2(totalBruto)),
-        total: Number(to2(totalCobrar)), // lo cobrado
+        total: Number(to2(totalCobrar)),
         margin: Number(to2(margin)),
         customerName: t.session.customerName || "",
         openedBy: t.session.createdBy || "",
@@ -286,17 +295,18 @@ export default function App() {
       return copy;
     });
   };
+
   // ======= Caja =======
-  const abrirCaja = (initialCash) => { setByBranch((prev) => { const copy = structuredClone(prev); const st = copy[selectedBranchId]; if (st.cash.currentShift) return prev; st.cash.currentShift = { id: uid("turno"), openedAt: nowTs(), openedBy: authUser?.username || "", initialCash: Number(initialCash) || 0, movements: [] }; return copy; }); };
-  const movimientoCaja = (type, concept, amount) => { setByBranch((prev) => { const copy = structuredClone(prev); const st = copy[selectedBranchId]; if (!st.cash.currentShift) return prev; st.cash.currentShift.movements.push({ id: uid("mov"), type, at: nowTs(), concept, amount: Number(amount) || 0, by: authUser?.username || "" }); return copy; }); };
-  const cerrarCaja = () => { setByBranch((prev) => { const copy = structuredClone(prev); const st = copy[selectedBranchId]; if (!st.cash.currentShift) return prev; const cur = st.cash.currentShift; cur.closedAt = nowTs(); cur.closedBy = authUser?.username || "";
-    const ingresos = cur.movements.filter((m) => m.type === "venta" || m.type === "ingreso").reduce((a, m) => a + m.amount, 0);
+  const abrirCaja = (initialCash) => { updateByBranch((copy) => { const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState)); if (st.cash.currentShift) return copy; st.cash.currentShift = { id: uid("turno"), openedAt: nowTs(), openedBy: authUser?.username || "", initialCash: Number(initialCash) || 0, movements: [] }; return copy; }); };
+  const movimientoCaja = (type, concept, amount) => { updateByBranch((copy) => { const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState)); if (!st.cash.currentShift) return copy; st.cash.currentShift.movements.push({ id: uid("mov"), type, at: nowTs(), concept, amount: Number(amount) || 0, by: authUser?.username || "" }); return copy; }); };
+  const cerrarCaja = () => { updateByBranch((copy) => { const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState)); if (!st.cash.currentShift) return copy; const cur = st.cash.currentShift; cur.closedAt = nowTs(); cur.closedBy = authUser?.username || "";
+    const ingresos = cur.movements.filter((m) => m.type === "venta" o
+r m.type === "ingreso").reduce((a, m) => a + m.amount, 0);
     const egresos = cur.movements.filter((m) => m.type === "egreso").reduce((a, m) => a + m.amount, 0);
     const totalCaja = cur.initialCash + ingresos - egresos;
     const ventas = cur.movements.filter((m) => m.type === "venta");
     const cierre = { id: uid("cierre"), branchId: selectedBranchId, branchName: selectedBranch?.name || "", openedAt: cur.openedAt, closedAt: cur.closedAt, openedBy: cur.openedBy, closedBy: cur.closedBy, initialCash: cur.initialCash, ingresos, egresos, totalCaja, ventasCount: ventas.length, ventasTotal: ventas.reduce((a, m) => a + m.amount, 0) };
     st.cash.shifts.push(cur); st.cash.closures.push(cierre); st.cash.currentShift = null; return copy; }); };
-
 
   const cajaResumen = useMemo(() => {
     const st = branchState; if (!st) return null; const turno = st.cash.currentShift; if (!turno) return null;
@@ -322,6 +332,7 @@ export default function App() {
       if (!res.ok) throw new Error('Agente no respondió');
     } catch (e) { throw e; }
   }
+
   // ======= Reportes (rango y filtros) =======
   const [reportFilter, setReportFilter] = useState(() => ({ from: fmtISODate(Date.now()), to: fmtISODate(Date.now()), cashier: '', table: '', product: '' }));
   const reportData = useMemo(() => {
@@ -364,19 +375,20 @@ export default function App() {
     const password = prompt('Contraseña inicial:') || '123456';
     const role = prompt('Rol (Administrador/Cajero):', 'Cajero') || 'Cajero';
     const branchId = prompt('Sucursal (id):', selectedBranchId) || selectedBranchId;
-    setUsers((prev) => [...prev, { id: uid('usr'), username, password, role, branchId, active: true }]);
+    setUsers((prev) => [...(prev || []), { id: uid('usr'), username, password, role, branchId, active: true }]);
   };
   const changePassword = (u) => {
     const np = prompt(`Nueva contraseña para ${u.username}:`, ''); if (!np) return;
-    setUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, password: np } : x));
+    setUsers((prev) => (prev || []).map((x) => x.id === u.id ? { ...x, password: np } : x));
   };
-  const toggleUser = (u) => { setUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, active: !x.active } : x)); };
+  const toggleUser = (u) => { setUsers((prev) => (prev || []).map((x) => x.id === u.id ? { ...x, active: !x.active } : x)); };
+
   // Gate de Login
   if (!authUser) {
     return (
       <LoginScreen
         onLogin={(username, password) => {
-          const found = users.find((x) => x.username === username && x.password === password && x.active);
+          const found = (users || []).find((x) => x.username === username && x.password === password && x.active);
           if (found) { setAuthUser({ username: found.username, role: found.role, branchId: found.branchId }); setSelectedBranchId(found.role === 'Cajero' ? found.branchId : selectedBranchId); }
           else alert('Usuario o contraseña incorrectos');
         }}
@@ -387,9 +399,7 @@ export default function App() {
 
   const canEditTariff = authUser?.role === "Administrador";
   const isCajero = authUser?.role === 'Cajero';
-  // Si es cajero, forzar sucursal y bloquear selector
   useEffect(() => { if (isCajero && authUser?.branchId) setSelectedBranchId(authUser.branchId); }, [isCajero, authUser]);
-
 
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900">
@@ -402,19 +412,11 @@ export default function App() {
             <select className="border rounded-lg px-2 py-1 text-sm" value={selectedBranchId} disabled={isCajero} onChange={(e) => setSelectedBranchId(e.target.value)}>
               {branches.map((b) => (<option key={b.id} value={b.id}>{b.name}</option>))}
             </select>
-            {!isCajero && (
-              <button onClick={() => { const name = prompt("Nombre de nueva sucursal:"); if (!name) return; const id = uid("suc"); setBranches((prev) => [...prev, { id, name }]); setByBranch((prev) => ({ ...prev, [id]: { tables: makeDefaultTables(config.tablesPerBranch), inventory: [...defaultInventory], kardex: [], cash: { currentShift: null, shifts: [], closures: [] }, sessions: [] } })); setSelectedBranchId(id); }} className="ml-1 text-xs px-2 py-1 rounded-lg bg-sky-50 text-sky-700 border">+ Sucursal</button>
-            )}
           </div>
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <div className="text-xl font-mono leading-tight">{fmtTimeSec(tick)}</div>
-              <div className="text-xs text-neutral-500 -mt-1">{fmtDate(tick)}</div>
-            </div>
-            <div className="flex items-center gap-2 ml-4">
-              <span className="text-xs text-neutral-500">{authUser.username} ({authUser.role})</span>
-              <button className="border px-2 py-1 rounded-lg text-xs" onClick={() => setAuthUser(null)}>Salir</button>
-            </div>
+          <Clock tick={tick} />
+          <div className="flex items-center gap-2 ml-4">
+            <span className="text-xs text-neutral-500">{authUser.username} ({authUser.role})</span>
+            <button className="border px-2 py-1 rounded-lg text-xs" onClick={() => setAuthUser(null)}>Salir</button>
           </div>
         </div>
       </header>
@@ -426,16 +428,16 @@ export default function App() {
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-xl font-semibold">Mesas</h2>
             <div className="flex gap-2">
-              {!isCajero && <button onClick={() => setByBranch((prev) => { const copy = structuredClone(prev); copy[selectedBranchId].tables.push({ id: uid("mesa"), name: `Mesa ${copy[selectedBranchId].tables.length + 1}`, status: 'libre', session: null }); return copy; })} className="px-3 py-1.5 rounded-xl bg-white border shadow-sm text-sm hover:bg-neutral-50">+ Mesa</button>}
+              <button onClick={() => updateByBranch((prev) => { const copy = deepClone(prev); (copy[selectedBranchId] ||= deepClone(branchState)).tables.push({ id: uid("mesa"), name: `Mesa ${(copy[selectedBranchId].tables.length) + 1}`, status: 'libre', session: null }); return copy; })} className="px-3 py-1.5 rounded-xl bg-white border shadow-sm text-sm hover:bg-neutral-50">+ Mesa</button>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-            {branchState.tables.map((t) => (
+            {(branchState.tables || []).map((t) => (
               <MesaCard key={t.id} table={t} config={config}
-                onStart={() => startTable(t.id)} onStop={() => stopTable(t.id)} onRename={(name) => setByBranch((prev) => { const copy = structuredClone(prev); const tab = copy[selectedBranchId].tables.find((x) => x.id === t.id); if (tab) tab.name = name; return copy; })}
+                onStart={() => startTable(t.id)} onStop={() => stopTable(t.id)} onRename={(name) => updateByBranch((prev) => { const copy = deepClone(prev); const tab = (copy[selectedBranchId] ||= deepClone(branchState)).tables.find((x) => x.id === t.id); if (tab) tab.name = name; return copy; })}
                 inventory={branchState.inventory}
                 onAddItem={(itemId) => addItemToTable(t.id, itemId)} onRemoveItem={(itemId) => removeItemFromTable(t.id, itemId)}
-                onCustomerChange={(name) => setByBranch((prev) => { const copy = structuredClone(prev); const tab = copy[selectedBranchId].tables.find((x) => x.id === t.id); if (tab?.session) tab.session.customerName = name; return copy; })}
+                onCustomerChange={(name) => updateByBranch((prev) => { const copy = deepClone(prev); const tab = (copy[selectedBranchId] ||= deepClone(branchState)).tables.find((x) => x.id === t.id); if (tab?.session) tab.session.customerName = name; return copy; })}
                 onPauseResume={() => pauseResumeTable(t.id)} onMove={() => moveSessionToTable(t.id)}
                 onItemDiscount={(itemId) => applyItemDiscount(t.id, itemId, prompt('PIN Supervisor:') || '')}
                 onMesaDiscount={() => applyMesaDiscount(t.id, prompt('PIN Supervisor:') || '')}
@@ -510,99 +512,7 @@ export default function App() {
           {/* Inventario y Kardex */}
           <InventoryCard branchState={branchState} setByBranch={setByBranch} selectedBranchId={selectedBranchId} ingresoStock={ingresoStock} egresoStockManual={egresoStockManual} />
           {/* Reportes (rango+filtros) */}
-          <div className="bg-white rounded-2xl shadow-sm border p-4">
-            <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Reportes</h3>
-              <div className="flex flex-wrap gap-2 items-center text-sm">
-                <label className="flex items-center gap-1">Desde <input type="date" className="border rounded-lg px-2 py-1" value={reportFilter.from} onChange={(e) => setReportFilter((f) => ({ ...f, from: e.target.value }))} /></label>
-                <label className="flex items-center gap-1">Hasta <input type="date" className="border rounded-lg px-2 py-1" value={reportFilter.to} onChange={(e) => setReportFilter((f) => ({ ...f, to: e.target.value }))} /></label>
-                <select className="border rounded-lg px-2 py-1" value={reportFilter.cashier} onChange={(e) => setReportFilter((f) => ({ ...f, cashier: e.target.value }))}>
-                  <option value="">Cajero (todos)</option>
-                  {Array.from(new Set(branchState.sessions.map((s) => s.closedBy))).filter(Boolean).map((c) => <option key={c}>{c}</option>)}
-                </select>
-                <select className="border rounded-lg px-2 py-1" value={reportFilter.table} onChange={(e) => setReportFilter((f) => ({ ...f, table: e.target.value }))}>
-                  <option value="">Mesa (todas)</option>
-                  {Array.from(new Set(branchState.sessions.map((s) => s.tableName))).map((c) => <option key={c}>{c}</option>)}
-                </select>
-                <select className="border rounded-lg px-2 py-1" value={reportFilter.product} onChange={(e) => setReportFilter((f) => ({ ...f, product: e.target.value }))}>
-                  <option value="">Producto (todos)</option>
-                  {Array.from(new Set(branchState.sessions.flatMap((s) => s.items.map((i) => i.name)))).map((p) => <option key={p}>{p}</option>)}
-                </select>
-                <button className="px-3 py-1.5 rounded-xl bg-white border shadow-sm" onClick={() => exportReportCSV(branchState, reportData, reportFilter, selectedBranch?.name)}>Exportar CSV</button>
-              </div>
-            </div>
-            <div className="text-sm space-y-1">
-              <div className="flex justify-between"><span>Tiempo facturado:</span><span>{reportData.totals.tiempo} min</span></div>
-              <div className="flex justify-between"><span>Total productos (neto):</span><span>{bs(reportData.totals.productos)}</span></div>
-              <div className="flex justify-between"><span>Margen total:</span><span>{bs(reportData.totals.margen)}</span></div>
-              <div className="flex justify-between font-semibold"><span>Total cobrado:</span><span>{bs(reportData.totals.total)}</span></div>
-            </div>
-            <details className="mt-2" open>
-              <summary className="text-sm text-neutral-600 cursor-pointer">Sesiones (detallado)</summary>
-              <div className="mt-2 max-h-64 overflow-auto pr-1 space-y-1">
-                {reportData.sessions.length === 0 && <div className="text-xs text-neutral-500">Sin sesiones en el rango.</div>}
-                {reportData.sessions.map((s) => (
-                  <div key={s.id} className="text-xs border rounded-lg p-2">
-                    <div className="grid grid-cols-2 gap-1">
-                      <div><b>Mesa:</b> {s.tableName}</div>
-                      <div><b>Cliente:</b> {s.customerName || "—"}</div>
-                      <div><b>Inicio:</b> {fmtTime(s.start)}</div>
-                      <div><b>Fin:</b> {fmtTime(s.end)}</div>
-                      <div><b>Tiempo (min):</b> {s.tariff.rounded}</div>
-                      <div><b>Tarifa:</b> {bs(s.tariff.amount)}</div>
-                      <div><b>Prod. bruto:</b> {bs(s.productosBruto)}</div>
-                      <div><b>Desc. ítems:</b> {bs(s.productosDesc)}</div>
-                      <div><b>Desc. mesa:</b> {bs(s.discountMesa)}</div>
-                      <div><b>Prod. neto:</b> {bs(s.productosNeto)}</div>
-                      <div><b>Costo prod.:</b> {bs(s.costoProductos)}</div>
-                      <div className="font-semibold"><b>Total cobrado:</b> {bs(s.total)}</div>
-                      <div><b>Margen (aprox):</b> {bs(s.margin)}</div>
-                      <div><b>Cerrado por:</b> {s.closedBy || "—"}</div>
-                    </div>
-                    <div className="mt-1 flex gap-2 justify-end">
-                      <button
-                        className="px-2 py-1 text-xs rounded-lg bg-white border"
-                        onClick={() => openTicket(s, s.branchName || selectedBranch?.name)}
-                      >
-                        Reimprimir
-                      </button>
-                      {authUser.role === 'Administrador' && (
-                        <>
-                          <button className="px-2 py-1 text-xs rounded-lg bg-white border" onClick={() => editSession(s.id)}>Editar</button>
-                          <button className="px-2 py-1 text-xs rounded-lg bg-rose-50 text-rose-700 border" onClick={() => deleteSession(s.id)}>Borrar</button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </details>
-
-            <details className="mt-2">
-              <summary className="text-sm text-neutral-600 cursor-pointer">Agregado por producto</summary>
-              <div className="mt-2 space-y-1 text-xs max-h-48 overflow-auto pr-1">
-                {reportData.prodAgg.map((p) => (
-                  <div key={p.name} className="grid grid-cols-4 gap-2 border rounded-lg p-2">
-                    <div><b>{p.name}</b></div><div>Cant: {p.qty}</div><div>Venta: {bs(p.venta)}</div><div>Margen: {bs(p.margen)}</div>
-                  </div>
-                ))}
-              </div>
-            </details>
-            <details className="mt-2">
-              <summary className="text-sm text-neutral-600 cursor-pointer">Por cajero</summary>
-              <div className="mt-2 space-y-1 text-xs">
-                {reportData.byCashier.map((c) => (<div key={c.cajero} className="flex justify-between border rounded-lg p-2"><span>{c.cajero}</span><b>{bs(c.ventas)}</b></div>))}
-              </div>
-            </details>
-
-
-            <details className="mt-2">
-              <summary className="text-sm text-neutral-600 cursor-pointer">Por mesa</summary>
-              <div className="mt-2 space-y-1 text-xs">
-                {reportData.byTable.map((r) => (<div key={r.mesa} className="flex justify-between border rounded-lg p-2"><span>{r.mesa}</span><b>{bs(r.ventas)}</b></div>))}
-              </div>
-            </details>
-          </div>
-
+          <ReportsCard branchState={branchState} selectedBranch={selectedBranch} reportFilter={reportFilter} setReportFilter={setReportFilter} reportData={reportData} />
 
           {/* Configuración */}
           <div className="bg-white rounded-2xl shadow-sm border p-4">
@@ -622,7 +532,7 @@ export default function App() {
             <div className="bg-white rounded-2xl shadow-sm border p-4">
               <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Usuarios</h3><button className="px-2 py-1 text-xs rounded-lg bg-sky-50 text-sky-700 border" onClick={createUser}>+ Usuario</button></div>
               <div className="space-y-1 max-h-56 overflow-auto pr-1 text-sm">
-                {users.map((u) => (
+                {(users || []).map((u) => (
                   <div key={u.id} className="grid grid-cols-12 gap-2 items-center border rounded-xl p-2">
                     <div className="col-span-3">{u.username}</div>
                     <div className="col-span-2">{u.role}</div>
@@ -652,39 +562,25 @@ export default function App() {
       `}</style>
     </div>
   );
-
-
-  // ======= Acciones de Edición en Reporte (Admin) =======
-  function editSession(sessionId) {
-    if (authUser.role !== 'Administrador') return;
-    const st = byBranch[selectedBranchId]; const s = st.sessions.find((x) => x.id === sessionId); if (!s) return;
-    const newClient = prompt('Cliente:', s.customerName || '') ?? s.customerName;
-    const newTotal = Number(prompt('Total cobrado (Bs):', String(s.total)) ?? s.total);
-    setByBranch((prev) => { const copy = structuredClone(prev); const arr = copy[selectedBranchId].sessions; const idx = arr.findIndex((x) => x.id === sessionId); if (idx >= 0) { arr[idx].customerName = newClient; arr[idx].total = newTotal; } return copy; });
-  }
-  function deleteSession(sessionId) {
-    if (authUser.role !== 'Administrador') return;
-    if (!confirm('¿Eliminar sesión?')) return;
-    setByBranch((prev) => { const copy = structuredClone(prev); copy[selectedBranchId].sessions = copy[selectedBranchId].sessions.filter((x) => x.id !== sessionId); return copy; });
-  }
 }
 
-// ======= Componentes =======
-function useLiveTimer(startTs, pausedMs, isPaused, pausedAt) {
-  const [state, setState] = useState(() => ({ ms: startTs ? (Date.now() - startTs - (pausedMs || 0)) : 0 }));
-  useEffect(() => {
-    if (!startTs) return; const t = setInterval(() => {
-      const base = Date.now() - startTs - (pausedMs || 0) - (isPaused ? (Date.now() - (pausedAt || Date.now())) : 0);
-      setState({ ms: Math.max(0, base) });
-    }, 1000); return () => clearInterval(t);
-  }, [startTs, pausedMs, isPaused, pausedAt]);
-  const totalSec = Math.max(0, Math.floor(state.ms / 1000)); const mm = String(Math.floor(totalSec / 60)).padStart(2, '0'); const ss = String(totalSec % 60).padStart(2, '0');
-  return { mmss: `${mm}:${ss}`, minutes: Math.ceil(totalSec / 60) };
+function Clock({ tick }){
+  return (
+    <div className="text-right">
+      <div className="text-xl font-mono leading-tight">{fmtTimeSec(tick)}</div>
+      <div className="text-xs text-neutral-500 -mt-1">{fmtDate(tick)}</div>
+    </div>
+  )
 }
 
 function MesaCard({ table, config, onStart, onStop, onRename, inventory, onAddItem, onRemoveItem, onCustomerChange, onPauseResume, onMove, onItemDiscount, onMesaDiscount }) {
-  const timer = useLiveTimer(table?.session?.start, table?.session?.pausedMs, table?.session?.isPaused, table?.session?.pausedAt);
-  const tarifa = useMemo(() => { if (!table.session) return null; return computeCharge({ start: table.session.start, end: Date.now(), ratePerHour: config.ratePerHour, minMinutes: config.minMinutes, fractionMinutes: config.fractionMinutes, pausedMs: table.session.pausedMs + (table.session.isPaused ? (Date.now() - (table.session.pausedAt || Date.now())) : 0) }); }, [table.session, config, timer.minutes]);
+  const start = table?.session?.start
+  const pausedMs = table?.session?.pausedMs
+  const isPaused = table?.session?.isPaused
+  const pausedAt = table?.session?.pausedAt
+  const [t, setT] = useState(0)
+  useEffect(() => { const i = setInterval(() => setT(Date.now()), 1000); return () => clearInterval(i) }, [])
+  const tarifa = useMemo(() => { if (!table.session) return null; const extraPause = isPaused ? (Date.now() - (pausedAt || Date.now())) : 0; return computeCharge({ start: start, end: Date.now(), ratePerHour: config.ratePerHour, minMinutes: config.minMinutes, fractionMinutes: config.fractionMinutes, pausedMs: (pausedMs || 0) + extraPause }); }, [table.session, config, t]);
   return (
     <div className={`rounded-2xl border shadow-sm p-3 ${table.status === "ocupada" ? "bg-emerald-50 border-emerald-200" : "bg-white"}`}>
       <div className="flex items-center justify-between mb-2">
@@ -704,7 +600,7 @@ function MesaCard({ table, config, onStart, onStop, onRename, inventory, onAddIt
           <div className="grid grid-cols-2 gap-2 text-sm">
             <div className="bg-white rounded-xl p-2 border">
               <div className="flex justify-between"><span>Inicio</span><b>{fmtTime(table.session.start)}</b></div>
-              <div className="flex justify-between"><span>Cronómetro</span><b>{timer.mmss}</b></div>
+              <div className="flex justify-between"><span>Cronómetro</span><b>{(() => { const ms = Math.max(0, (Date.now() - start - (pausedMs || 0) - (isPaused ? (Date.now() - (pausedAt || Date.now())) : 0))); const sec = Math.floor(ms/1000); const mm = String(Math.floor(sec/60)).padStart(2,'0'); const ss = String(sec%60).padStart(2,'0'); return `${mm}:${ss}` })()}</b></div>
               <div className="flex justify-between"><span>Facturable</span><b>{tarifa?.rounded ?? 0} min</b></div>
               <div className="flex justify-between"><span>Importe</span><b>{bs(tarifa?.amount ?? 0)}</b></div>
               <div className="flex gap-2 mt-2">
@@ -760,12 +656,12 @@ function InventoryCard({ branchState, setByBranch, selectedBranchId, ingresoStoc
         <div className="flex items-center gap-2">
           <button className="px-2 py-1 text-xs rounded-lg bg-sky-50 text-sky-700 border" onClick={() => {
             const name = prompt("Producto:"); if (!name) return; const price = Number(prompt("Precio venta (Bs):", "0") || 0); const cost = Number(prompt("Precio real/costo (Bs):", "0") || 0); const stock = Number(prompt("Stock inicial:", "0") || 0); const unit = prompt("Unidad (u, bot, etc):", "u") || "u";
-            setByBranch((prev) => { const copy = structuredClone(prev); copy[selectedBranchId].inventory.push({ id: uid("item"), name, price, cost, stock, unit }); return copy; });
+            setByBranch((prev) => { const copy = deepClone(prev || {}); (copy[selectedBranchId] ||= deepClone(branchState)).inventory.push({ id: uid("item"), name, price, cost, stock, unit }); return copy; });
           }}>+ Producto</button>
         </div>
       </div>
       <div className="space-y-1 max-h-60 overflow-auto pr-1">
-        {branchState.inventory.map((it) => (
+        {(branchState.inventory || []).map((it) => (
           <div key={it.id} className="grid grid-cols-12 gap-2 items-center text-sm p-2 rounded-xl border hover:bg-neutral-50">
             <div className="col-span-3 font-medium truncate" title={it.name}>{it.name}</div>
             <div className="col-span-2 text-right">Costo: {bs(it.cost)}</div>
@@ -778,14 +674,13 @@ function InventoryCard({ branchState, setByBranch, selectedBranchId, ingresoStoc
                 const cost = Number(prompt("Nuevo costo (Bs):", String(it.cost)) ?? it.cost);
                 const price = Number(prompt("Nuevo precio venta (Bs):", String(it.price)) ?? it.price);
                 const stock = Number(prompt("Ajustar stock (suma/resta):", "0") || 0);
-                setByBranch((prev) => { const copy = structuredClone(prev); const inv = copy[selectedBranchId].inventory.find((x) => x.id === it.id); if (!inv) return prev; inv.name = name; inv.cost = cost; inv.price = price; inv.stock = inv.stock + stock; return copy; });
+                setByBranch((prev) => { const copy = deepClone(prev || {}); const inv = (copy[selectedBranchId] ||= deepClone(branchState)).inventory.find((x) => x.id === it.id); if (!inv) return prev; inv.name = name; inv.cost = cost; inv.price = price; inv.stock = inv.stock + stock; return copy; });
               }}>Editar</button>
               <button className="px-2 py-1 text-xs rounded-lg bg-white border" onClick={() => setViewKardexFor(viewKardexFor === it.id ? '' : it.id)}>Kardex</button>
               <button className="px-2 py-1 text-xs rounded-lg bg-white border" onClick={() => {
                 const qty = Number(prompt('Ingreso cantidad:', '0') || 0); const ucost = Number(prompt('Costo unitario (Bs):', String(it.cost)) || it.cost); if (qty > 0) ingresoStock(it, qty, ucost);
               }}>Ingreso</button>
               <button className="px-2 py-1 text-xs rounded-lg bg-white border" onClick={() => { const qty = Number(prompt('Egreso/Ajuste cantidad:', '0') || 0); if (qty > 0) egresoStockManual(it, qty, 'Ajuste'); }}>Egreso</button>
-              <button className="px-2 py-1 text-xs rounded-lg bg-rose-50 text-rose-700 border" onClick={() => { if (confirm("Eliminar producto?")) setByBranch((prev) => { const copy = structuredClone(prev); copy[selectedBranchId].inventory = copy[selectedBranchId].inventory.filter((x) => x.id !== it.id); return copy; }); }}>Borrar</button>
             </div>
             {viewKardexFor === it.id && (
               <div className="col-span-12 text-xs border rounded-lg p-2 bg-white">
@@ -808,6 +703,98 @@ function InventoryCard({ branchState, setByBranch, selectedBranchId, ingresoStoc
       </div>
     </div>
   );
+}
+
+function ReportsCard({ branchState, selectedBranch, reportFilter, setReportFilter, reportData }){
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border p-4">
+      <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Reportes</h3>
+        <div className="flex flex-wrap gap-2 items-center text-sm">
+          <label className="flex items-center gap-1">Desde <input type="date" className="border rounded-lg px-2 py-1" value={reportFilter.from} onChange={(e) => setReportFilter((f) => ({ ...f, from: e.target.value }))} /></label>
+          <label className="flex items-center gap-1">Hasta <input type="date" className="border rounded-lg px-2 py-1" value={reportFilter.to} onChange={(e) => setReportFilter((f) => ({ ...f, to: e.target.value }))} /></label>
+          <select className="border rounded-lg px-2 py-1" value={reportFilter.cashier} onChange={(e) => setReportFilter((f) => ({ ...f, cashier: e.target.value }))}>
+            <option value="">Cajero (todos)</option>
+            {Array.from(new Set(branchState.sessions.map((s) => s.closedBy))).filter(Boolean).map((c) => <option key={c}>{c}</option>)}
+          </select>
+          <select className="border rounded-lg px-2 py-1" value={reportFilter.table} onChange={(e) => setReportFilter((f) => ({ ...f, table: e.target.value }))}>
+            <option value="">Mesa (todas)</option>
+            {Array.from(new Set(branchState.sessions.map((s) => s.tableName))).map((c) => <option key={c}>{c}</option>)}
+          </select>
+          <select className="border rounded-lg px-2 py-1" value={reportFilter.product} onChange={(e) => setReportFilter((f) => ({ ...f, product: e.target.value }))}>
+            <option value="">Producto (todos)</option>
+            {Array.from(new Set(branchState.sessions.flatMap((s) => s.items.map((i) => i.name)))).map((p) => <option key={p}>{p}</option>)}
+          </select>
+          <button className="px-3 py-1.5 rounded-xl bg-white border shadow-sm" onClick={() => exportReportCSV(branchState, reportData, reportFilter, selectedBranch?.name)}>Exportar CSV</button>
+        </div>
+      </div>
+      <div className="text-sm space-y-1">
+        <div className="flex justify-between"><span>Tiempo facturado:</span><span>{reportData.totals.tiempo} min</span></div>
+        <div className="flex justify-between"><span>Total productos (neto):</span><span>{bs(reportData.totals.productos)}</span></div>
+        <div className="flex justify-between"><span>Margen total:</span><span>{bs(reportData.totals.margen)}</span></div>
+        <div className="flex justify-between font-semibold"><span>Total cobrado:</span><span>{bs(reportData.totals.total)}</span></div>
+      </div>
+      <details className="mt-2" open>
+        <summary className="text-sm text-neutral-600 cursor-pointer">Sesiones (detallado)</summary>
+        <div className="mt-2 max-h-64 overflow-auto pr-1 space-y-1">
+          {reportData.sessions.length === 0 && <div className="text-xs text-neutral-500">Sin sesiones en el rango.</div>}
+          {reportData.sessions.map((s) => (
+            <div key={s.id} className="text-xs border rounded-lg p-2">
+              <div className="grid grid-cols-2 gap-1">
+                <div><b>Mesa:</b> {s.tableName}</div>
+                <div><b>Cliente:</b> {s.customerName || "—"}</div>
+                <div><b>Inicio:</b> {fmtTime(s.start)}</div>
+                <div><b>Fin:</b> {fmtTime(s.end)}</div>
+                <div><b>Tiempo (min):</b> {s.tariff.rounded}</div>
+                <div><b>Tarifa:</b> {bs(s.tariff.amount)}</div>
+                <div><b>Prod. bruto:</b> {bs(s.productosBruto)}</div>
+                <div><b>Desc. ítems:</b> {bs(s.productosDesc)}</div>
+                <div><b>Desc. mesa:</b> {bs(s.discountMesa)}</div>
+                <div><b>Prod. neto:</b> {bs(s.productosNeto)}</div>
+                <div><b>Costo prod.:</b> {bs(s.costoProductos)}</div>
+                <div className="font-semibold"><b>Total cobrado:</b> {bs(s.total)}</div>
+                <div><b>Margen (aprox):</b> {bs(s.margin)}</div>
+                <div><b>Cerrado por:</b> {s.closedBy || "—"}</div>
+              </div>
+              <div className="mt-1 flex gap-2 justify-end">
+                <button
+                  className="px-2 py-1 text-xs rounded-lg bg-white border"
+                  onClick={() => openTicket(s, s.branchName || selectedBranch?.name)}
+                >
+                  Reimprimir
+                </button>
+                {/* Editar/Borrar: opcional agregar aquí si lo necesitas */}
+              </div>
+            </div>
+          ))}
+        </div>
+      </details>
+
+      <details className="mt-2">
+        <summary className="text-sm text-neutral-600 cursor-pointer">Agregado por producto</summary>
+        <div className="mt-2 space-y-1 text-xs max-h-48 overflow-auto pr-1">
+          {reportData.prodAgg.map((p) => (
+            <div key={p.name} className="grid grid-cols-4 gap-2 border rounded-lg p-2">
+              <div><b>{p.name}</b></div><div>Cant: {p.qty}</div><div>Venta: {bs(p.venta)}</div><div>Margen: {bs(p.margen)}</div>
+            </div>
+          ))}
+        </div>
+      </details>
+      <details className="mt-2">
+        <summary className="text-sm text-neutral-600 cursor-pointer">Por cajero</summary>
+        <div className="mt-2 space-y-1 text-xs">
+          {reportData.byCashier.map((c) => (<div key={c.cajero} className="flex justify-between border rounded-lg p-2"><span>{c.cajero}</span><b>{bs(c.ventas)}</b></div>))}
+        </div>
+      </details>
+
+
+      <details className="mt-2">
+        <summary className="text-sm text-neutral-600 cursor-pointer">Por mesa</summary>
+        <div className="mt-2 space-y-1 text-xs">
+          {reportData.byTable.map((r) => (<div key={r.mesa} className="flex justify-between border rounded-lg p-2"><span>{r.mesa}</span><b>{bs(r.ventas)}</b></div>))}
+        </div>
+      </details>
+    </div>
+  )
 }
 
 function Ticket80mm({ data, config }) {
