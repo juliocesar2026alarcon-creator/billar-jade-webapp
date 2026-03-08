@@ -1,0 +1,13 @@
+
+services:
+  - name: billar-jade
+    type: static_site
+    repo: https://github.com/TU_USUARIO/billar-jade-webapp
+    branch: main
+    buildCommand: "npm ci && npm run build"
+    publishPath: "dist"
+    pullRequestPreviewsEnabled: true
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: no-store
