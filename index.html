@@ -8,6 +8,47 @@
     <!-- Tailwind por CDN (simple). Si luego quieres, lo pasamos a build de Tailwind CLI. -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
+  /* ==== SOLO mesa: usamos la combinación de clases del card de mesa (p-3) para no afectar el panel derecho (p-4) ==== */
+  .rounded-2xl.border.shadow-sm.p-3 { 
+    min-height: 230px;               /* altura mínima pareja para todas las mesas */
+  }
+
+  /* Rejilla interna de 2 columnas dentro de la mesa ocupada */
+  .rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-2 {
+    gap: 10px;                       /* más espacio entre columnas */
+  }
+
+  /* Cada columna "blanca" interna se comporta como columna flexible (contenido uno debajo del otro) */
+  .rounded-2xl.border.shadow-sm.p-3 .bg-white.rounded-xl.p-2.border {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Acciones (Pausar / Mover / Desc. mesa): permitir salto de línea y espaciar */
+  .rounded-2xl.border.shadow-sm.p-3 .flex.gap-2 {
+    flex-wrap: wrap;                 /* permite que los botones pasen a 2 líneas si no entra */
+    gap: .5rem;
+  }
+
+  /* Mejora de legibilidad en los renglones de la izquierda (Inicio, Cronómetro, etc.) */
+  .rounded-2xl.border.shadow-sm.p-3 .flex.justify-between {
+    line-height: 1.35;
+    margin-bottom: 2px;
+  }
+
+  /* Lista de productos: scroll interno y pequeño margen derecho para que no tape el texto */
+  .rounded-2xl.border.shadow-sm.p-3 .max-h-24,
+  .rounded-2xl.border.shadow-sm.p-3 .max-h-28 {
+    overflow: auto;
+    max-height: 7.5rem;              /* ~120px */
+    padding-right: .25rem;
+  }
+
+  /* En pantallas angostas, que los botoncitos finitos puedan ocupar fila completa si hace falta */
+  @media (max-width: 640px) {
+    .rounded-2xl.border.shadow-sm.p-3 .px-2.py-1.rounded-lg { width: 100%; }
+  }
+
   /* Altura mínima de cada tarjeta de mesa (más prolijas) */
   .rounded-2xl.border.shadow-sm.p-3 { min-height: 210px; }
 
