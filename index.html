@@ -69,6 +69,34 @@
       width: 100%;
     }
   }
+     /* --- Hotfix: impedir que la columna derecha empuje/encime a la izquierda --- */
+.rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-2 > * { 
+  min-width: 0;                 /* ambas columnas dejan encoger su contenido */
+}
+
+/* Que nada se “salga” de la tarjeta interna derecha */
+.rounded-2xl.border.shadow-sm.p-3 .bg-white.rounded-xl.p-2.border {
+  overflow: hidden;
+}
+
+/* Dentro de cada fila de producto (grid de 12 cols), permitir encoger hijos y truncar */
+.rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-12 > * { 
+  min-width: 0;
+}
+.rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-12 .truncate {
+  min-width: 0;
+}
+
+/* Un poco más de alto para el scroll de productos (para que no baje la tarjeta) */
+.rounded-2xl.border.shadow-sm.p-3 .max-h-28 {
+  max-height: 9.5rem;           /* ~152px */
+}
+
+/* Botones “- / Desc” que no rompan el ancho de su columna */
+.rounded-2xl.border.shadow-sm.p-3 .col-span-3 .btn {
+  width: auto;
+  white-space: nowrap;
+}
 </style>
   </head>
   <body class="bg-neutral-50">
