@@ -387,12 +387,6 @@ export default function App() {
   };
   const toggleUser = (u) => { setUsers((prev) => (prev || []).map((x) => x.id === u.id ? { ...x, active: !x.active } : x)); };
 
-const canEditTariff = authUser?.role === "Administrador";
-const isCajero = authUser?.role === 'Cajero';
-useEffect(() => { 
-  if (isCajero && authUser?.branchId) setSelectedBranchId(authUser.branchId);
-}, [isCajero, authUser]);
-  
   // Gate de Login
   if (!authUser) {
     return (
@@ -407,7 +401,10 @@ useEffect(() => {
     );
   }
 
-  
+  const canEditTariff = authUser?.role === "Administrador";
+  const isCajero = authUser?.role === 'Cajero';
+  useEffect(() => { if (isCajero && authUser?.branchId) setSelectedBranchId(authUser.branchId); }, [isCajero, authUser]);
+
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900">
       {/* Top bar */}
