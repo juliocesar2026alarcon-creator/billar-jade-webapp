@@ -8,48 +8,50 @@
     <!-- Tailwind por CDN (simple). Si luego quieres, lo pasamos a build de Tailwind CLI. -->
     <script src="https://cdn.tailwindcss.com"></script>
 <style>
-  /* ====== SOLO aplica dentro de la tarjeta de cada mesa (no toca el panel derecho) ====== */
+  /* === Solo aplica dentro de la tarjeta de cada mesa (no toca el panel derecho) === */
   .rounded-2xl.border.shadow-sm.p-3 {
-    min-height: 240px;                 /* un poco más de alto para respirar */
+    min-height: 240px;                /* altura mínima prolija */
   }
 
-  /* (ESCRITORIO) Rejilla interna de la mesa ocupada: 2 columnas estables 58% / 42% */
+  /* === Rejilla interna de la mesa ocupada (ESCRITORIO) ===
+     2 columnas estables: izquierda 62% (tiempo/tarifa/acciones) y derecha 38% (cliente/productos) */
   .rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-2 {
     display: grid !important;
-    grid-template-columns: 58% 42%;
+    grid-template-columns: 62% 38%;
     gap: 10px;
-    align-items: start;                /* anclar arriba */
+    align-items: start;               /* anclar arriba */
   }
 
-  /* Que las DOS columnas permitan encoger su contenido (clave para evitar empuje) */
+  /* Ambas columnas permiten encoger su contenido (clave p/evitar empujes) */
   .rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-2 > * {
     min-width: 0;
   }
 
-  /* Columna derecha (cliente/productos): impedir desbordes hacia la izquierda */
+  /* La columna derecha no deja que nada se “derrame” hacia afuera */
   .rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-2 > :nth-child(2) {
-    overflow: hidden;                  /* nada se sale visualmente */
+    overflow: hidden;
   }
 
-  /* Cuadros internos blancos: apilar su contenido en columna y algo de espacio vertical */
+  /* Cuadros internos blancos: apilar elementos en columna con pequeño espacio vertical */
   .rounded-2xl.border.shadow-sm.p-3 .bg-white.rounded-xl.p-2.border {
     display: flex;
     flex-direction: column;
     gap: 6px;
   }
 
-  /* Filas de la columna izquierda más legibles */
+  /* Filas informativas (Inicio/Cronómetro/…) más legibles */
   .rounded-2xl.border.shadow-sm.p-3 .flex.justify-between {
     line-height: 1.35;
   }
 
-  /* Acciones (Pausar / Mover / Desc.): permitir salto y espaciar */
+  /* Acciones (Pausar/Retomar, Mover, Desc. mesa): permitir salto y espaciar */
   .rounded-2xl.border.shadow-sm.p-3 .flex.gap-2 {
     flex-wrap: wrap;
     gap: 8px;
   }
 
-  /* Dentro de cada fila de producto (grid 12 cols), permitir encoger y truncar */
+  /* === Lista de productos (grid 12 columnas) ===
+     Permitir encoger celdas y truncar nombres largos sin romper layout */
   .rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-12 > * {
     min-width: 0;
   }
@@ -57,63 +59,37 @@
     min-width: 0;
   }
 
-  /* Lista de productos: scroll interno y margen para que el scroll no tape texto */
+  /* Los dos botones de acciones del ítem (col-span-3, “-” y “Desc”) a la par, sin sobreponerse */
+  .rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-12 .col-span-3.flex {
+    flex-wrap: nowrap;                /* no apilar: van uno al lado del otro */
+    gap: 6px;
+  }
+  .rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-12 .col-span-3.flex > button {
+    flex: 0 0 auto;                   /* no estirar */
+    white-space: nowrap;              /* no cortar el texto */
+    padding: 2px 8px;                 /* un poco menos de padding para que entren cómodo */
+    line-height: 1.2;
+    box-sizing: border-box;
+  }
+
+  /* Scroll interno de la lista de productos (no estira la tarjeta) */
   .rounded-2xl.border.shadow-sm.p-3 .max-h-24,
   .rounded-2xl.border.shadow-sm.p-3 .max-h-28 {
     overflow: auto;
     max-height: 9.5rem;               /* ~152px */
-    padding-right: .25rem;
+    padding-right: .25rem;            /* margen para que el scroll no tape texto */
   }
 
-  /* Botones “- / Desc” no rompan su columna */
-  .rounded-2xl.border.shadow-sm.p-3 .col-span-3 .btn {
-    width: auto;
-    white-space: nowrap;
-  }
-
-  /* (MÓVIL <= 640px) Apilar columnas y permitir botones a ancho completo si hace falta */
+  /* === MÓVIL (<= 640px): apilar columnas y permitir botones a ancho completo si hace falta === */
   @media (max-width: 640px) {
     .rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-2 {
-      grid-template-columns: 1fr;     /* apilar izquierda y derecha */
+      grid-template-columns: 1fr;     /* apila izquierda y derecha */
       gap: 8px;
     }
     .rounded-2xl.border.shadow-sm.p-3 .px-2.py-1.rounded-lg {
       width: 100%;
     }
   }
-  /* --- Más ancho a la izquierda y menos a la derecha: 62% / 38% --- */
-.rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-2 {
-  grid-template-columns: 62% 38%;
-}
-
-/* --- La fila de botones del lado derecho NO debe romper ni apilar raro --- */
-/* Es la columna “col-span-3 flex …” que contiene los dos botones (- y Desc) */
-.rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-12 .col-span-3.flex {
-  flex-wrap: nowrap;            /* no apilar; que vayan a la par */
-  gap: 6px;                     /* espacio entre los dos */
-}
-
-/* Los dos botones dentro de esa col-span-3: que encajen, no crezcan, y no rompan línea */
-.rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-12 .col-span-3.flex > button {
-  flex: 0 0 auto;               /* no estirar */
-  white-space: nowrap;          /* no cortar el texto */
-  padding: 2px 8px;             /* un pelín menos de padding que Tailwind para que entren cómodo */
-  line-height: 1.2;
-  box-sizing: border-box;
-}
-
-/* Por si el nombre del producto es larguísimo: permitir encoger y truncar la columna del nombre */
-.rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-12 .col-span-6,
-.rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-12 .col-span-6 .truncate {
-  min-width: 0;
-}
-
-/* Mantener el scroll de la lista sin que crezca la tarjeta */
-.rounded-2xl.border.shadow-sm.p-3 .max-h-28 {
-  max-height: 9.5rem;  /* ~152px */
-  overflow: auto;
-  padding-right: .25rem;
-}
 </style>
   </head>
   <body class="bg-neutral-50">
