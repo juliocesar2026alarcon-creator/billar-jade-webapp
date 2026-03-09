@@ -7,56 +7,68 @@
     <title>Control de Billar — Billar Jade</title>
     <!-- Tailwind por CDN (simple). Si luego quieres, lo pasamos a build de Tailwind CLI. -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-  /* ==== SOLO mesa: usamos la combinación de clases del card de mesa (p-3) para no afectar el panel derecho (p-4) ==== */
-  .rounded-2xl.border.shadow-sm.p-3 { 
-    min-height: 230px;               /* altura mínima pareja para todas las mesas */
+   <style>
+  /* ====== SOLO aplica dentro de la tarjeta de cada mesa (no toca el panel derecho) ====== */
+  /* Seleccionamos la tarjeta de mesa por la combinación de clases que YA tiene: */
+  .rounded-2xl.border.shadow-sm.p-3 {
+    min-height: 240px;                  /* un poco más alta para respirar */
   }
 
-  /* Rejilla interna de 2 columnas dentro de la mesa ocupada */
+  /* Rejilla interna de la mesa ocupada: 2 columnas estables (56% / 44%) con gap */
   .rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-2 {
-    gap: 10px;                       /* más espacio entre columnas */
+    display: grid !important;
+    grid-template-columns: 56% 44%;
+    gap: 10px;
+    align-items: start;                 /* que arranque arriba, no al medio */
   }
 
-  /* Cada columna "blanca" interna se comporta como columna flexible (contenido uno debajo del otro) */
+  /* Columnas internas “blancas”: que apilen su contenido en columna */
   .rounded-2xl.border.shadow-sm.p-3 .bg-white.rounded-xl.p-2.border {
     display: flex;
     flex-direction: column;
+    gap: 6px;                            /* pequeño espacio vertical entre filas internas */
   }
 
-  /* Acciones (Pausar / Mover / Desc. mesa): permitir salto de línea y espaciar */
-  .rounded-2xl.border.shadow-sm.p-3 .flex.gap-2 {
-    flex-wrap: wrap;                 /* permite que los botones pasen a 2 líneas si no entra */
-    gap: .5rem;
-  }
-
-  /* Mejora de legibilidad en los renglones de la izquierda (Inicio, Cronómetro, etc.) */
+  /* Filas de la izquierda (Inicio, Cronómetro, etc.) más legibles */
   .rounded-2xl.border.shadow-sm.p-3 .flex.justify-between {
     line-height: 1.35;
-    margin-bottom: 2px;
   }
 
-  /* Lista de productos: scroll interno y pequeño margen derecho para que no tape el texto */
+  /* Acciones (Pausar/Retomar, Mover, Desc. mesa): permitir salto y espaciar */
+  .rounded-2xl.border.shadow-sm.p-3 .flex.gap-2 {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  /* Botones chiquitos: que no “crezcan” de más pero puedan ocupar la fila completa si hace falta */
+  .rounded-2xl.border.shadow-sm.p-3 .px-2.py-1.rounded-lg {
+    max-width: 100%;
+  }
+
+  /* Botones “Cerrar” al pie: misma regla de acomodo y salto si hace falta */
+  .rounded-2xl.border.shadow-sm.p-3 .flex.justify-end.gap-2,
+  .rounded-2xl.border.shadow-sm.p-3 .flex.justify-between.gap-2 {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* Lista de productos dentro de la columna derecha: scroll interno y margen */
   .rounded-2xl.border.shadow-sm.p-3 .max-h-24,
   .rounded-2xl.border.shadow-sm.p-3 .max-h-28 {
     overflow: auto;
-    max-height: 7.5rem;              /* ~120px */
-    padding-right: .25rem;
+    max-height: 7.5rem;                  /* ~120px */
+    padding-right: .25rem;               /* para que el scroll no tape texto */
   }
 
-  /* En pantallas angostas, que los botoncitos finitos puedan ocupar fila completa si hace falta */
+  /* En móviles: columnas apiladas y botones ancho completo si hace falta */
   @media (max-width: 640px) {
-    .rounded-2xl.border.shadow-sm.p-3 .px-2.py-1.rounded-lg { width: 100%; }
+    .rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-2 {
+      grid-template-columns: 1fr;        /* apilar izquierda y derecha */
+      gap: 8px;
+    }
+    .rounded-2xl.border.shadow-sm.p-3 .px-2.py-1.rounded-lg {
+      width: 100%;
+    }
   }
-
-  /* Altura mínima de cada tarjeta de mesa (más prolijas) */
-  .rounded-2xl.border.shadow-sm.p-3 { min-height: 210px; }
-
-  /* Evita que los botones de acciones se encimen dentro de la mesa ocupada */
-  .flex.gap-2 { flex-wrap: wrap; gap: .5rem; }
-
-  /* La lista de productos dentro de la mesa ocupada con scroll y mejor espaciado */
-  .space-y-1.max-h-28 { overflow: auto; padding-right: .25rem; }
 </style>
   </head>
   <body class="bg-neutral-50">
