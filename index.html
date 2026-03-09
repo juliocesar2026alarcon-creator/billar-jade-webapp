@@ -7,6 +7,16 @@
     <title>Control de Billar — Billar Jade</title>
     <!-- Tailwind por CDN (simple). Si luego quieres, lo pasamos a build de Tailwind CLI. -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+  /* Altura mínima de cada tarjeta de mesa (más prolijas) */
+  .rounded-2xl.border.shadow-sm.p-3 { min-height: 210px; }
+
+  /* Evita que los botones de acciones se encimen dentro de la mesa ocupada */
+  .flex.gap-2 { flex-wrap: wrap; gap: .5rem; }
+
+  /* La lista de productos dentro de la mesa ocupada con scroll y mejor espaciado */
+  .space-y-1.max-h-28 { overflow: auto; padding-right: .25rem; }
+</style>
   </head>
   <body class="bg-neutral-50">
     <div id="root"></div>
