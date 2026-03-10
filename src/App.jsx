@@ -1,6 +1,25 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { deepClone } from './safeClone.js';
+// --- Abre una ventana emergente con la misma app mostrando 1 sola sección (?mini=...) ---
+function openPopup(view) {
+  // arma la URL actual + ?mini=...
+  const url = new URL(window.location.href);
+  url.searchParams.set('mini', view);
 
+  // popup con nombre por vista (reutiliza la misma ventana si ya está abierta)
+  const features = [
+    'width=980',
+    'height=720',
+    'menubar=no',
+    'toolbar=no',
+    'location=no',
+    'status=no',
+    'resizable=yes',
+    'scrollbars=yes'
+  ].join(',');
+
+  window.open(url.toString(), `mini-${view}`, features);
+}
 /**
  * Control de Billar — App.jsx (versión con botón “+ Producto” y modal integrado)
  *
@@ -485,7 +504,69 @@ export default function App() {
       />
     );
   }
+// Detectar modo 'mini' (solo una tarjeta en la ventana emergente)
+const params = new URLSearchParams(window.location.search);
+const mini = params.get('mini'); // 'inventory' | 'reports' | 'config' | 'users'
 
+if (mini && authUser) {
+  const miniShell = (children, title) => (
+    <div className="min-h-screen bg-neutral-50 p-3">
+      <header className="sticky top-0 z-10 bg-white/85 backdrop-blur shadow-sm mb-3">
+        <div className="max-w-4xl mx-auto p-3 flex items-center justify-between">
+          <h1 className="text-lg font-semibold">{title}</h1>
+          <div className="text-xs text-neutral-600">
+            {authUser.username} ({authUser.role})
+          </div>
+        </div>
+      </header>
+      <main className="max-w-4xl mx-auto">{children}</main>
+    </div>
+  );
+
+  if (mini === 'inventory') {
+    return miniShell(
+      <InventoryCard
+        branchState={branchState}
+        setByBranch={setByBranch}
+        selectedBranchId={selectedBranchId}
+        ingresoStock={ingresoStock}
+        egresoStockManual={egresoStockManual}
+      />,
+      'Inventario'
+    );
+  }
+
+  if (mini === 'reports') {
+    return miniShell(
+      <ReportsCard
+        branchState={branchState}
+        selectedBranch={selectedBranch}
+        reportFilter={reportFilter}
+        setReportFilter={setReportFilter}
+        reportData={reportData}
+      />,
+      'Reportes'
+    );
+  }
+
+  if (mini === 'config') {
+    return miniShell(
+      <div className="bg-white rounded-2xl shadow-sm border p-4">
+        ...
+      </div>,
+      'Configuración'
+    );
+  }
+
+  if (mini === 'users') {
+    return miniShell(
+      <div className="bg-white rounded-2xl shadow-sm border p-4">
+        ...
+      </div>,
+      'Usuarios'
+    );
+  }
+}
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900">
       {/* Top bar */}
@@ -560,151 +641,51 @@ export default function App() {
           </div>
         </section>
 
-        {/* Lateral: Tarifas / Caja / Inventario / Reportes / Config / Usuarios */}
-        <section className="space-y-4">
-          {/* Tarifas */}
-          <div className="bg-white rounded-2xl shadow-sm border p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold">Tarifas</h3>
-              {!canEditTariff && <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border">Solo visualización</span>}
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <label className="flex flex-col">
-                <span>Tarifa (Bs/h)</span>
-                <input type="number" className="border rounded-lg px-2 py-1" value={config.ratePerHour} disabled={!canEditTariff} onChange={(e) => setConfig((c) => ({ ...c, ratePerHour: Number(e.target.value) }))} />
-              </label>
-              <label className="flex flex-col">
-                <span>Fracción (min)</span>
-                <input type="number" className="border rounded-lg px-2 py-1" value={config.fractionMinutes} disabled={!canEditTariff} onChange={(e) => setConfig((c) => ({ ...c, fractionMinutes: Number(e.target.value) }))} />
-              </label>
-              <label className="flex flex-col">
-                <span>Mínimo (min)</span>
-                <input type="number" className="border rounded-lg px-2 py-1" value={config.minMinutes} disabled={!canEditTariff} onChange={(e) => setConfig((c) => ({ ...c, minMinutes: Number(e.target.value) }))} />
-              </label>
-              <label className="flex items-center justify-between">
-                <span>Redondeo 0.49/0.50</span>
-                <input type="checkbox" checked={config.roundingEnabled} onChange={(e) => setConfig((c) => ({ ...c, roundingEnabled: e.target.checked }))} />
-              </label>
-            </div>
-          </div>
+        {/* Lateral: 4 accesos (cada uno abre una ventana emergente) */}
+<section className="space-y-3">
+  <div className="bg-white rounded-2xl shadow-sm border p-4">
+    <h3 className="font-semibold mb-2">Accesos rápidos</h3>
+    <div className="grid grid-cols-1 gap-2">
 
-          {/* Caja */}
-          <div className="bg-white rounded-2xl shadow-sm border p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold">Caja</h3>
-              {branchState.cash.currentShift
-                ? <span className="text-xs bg-emerald-50 text-emerald-700 border px-2 py-0.5 rounded-full">Turno abierto</span>
-                : <span className="text-xs bg-neutral-50 text-neutral-600 border px-2 py-0.5 rounded-full">Turno cerrado</span>}
-            </div>
+      <button
+        onClick={() => openPopup('inventory')}
+        className="px-3 py-2 rounded-xl bg-white border shadow-sm text-left hover:bg-neutral-50"
+      >
+        📦 Inventario
+        <div className="text-xs text-neutral-500">Abrir ventana emergente</div>
+      </button>
 
-            {!branchState.cash.currentShift ? (
-              <div className="space-y-3">
-                <div className="flex gap-2">
-                  <input type="number" placeholder="Saldo inicial" className="border rounded-lg px-2 py-1 text-sm" onKeyDown={(e) => { if (e.key === "Enter") abrirCaja(e.currentTarget.value); }} />
-                  <button className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-sm"
-                    onClick={() => { const v = prompt("Saldo inicial de caja:", "0"); if (v != null) abrirCaja(Number(v)); }}
-                  >Abrir</button>
-                </div>
+      <button
+        onClick={() => openPopup('reports')}
+        className="px-3 py-2 rounded-xl bg-white border shadow-sm text-left hover:bg-neutral-50"
+      >
+        📈 Reportes
+        <div className="text-xs text-neutral-500">Abrir ventana emergente</div>
+      </button>
 
-                <details>
-                  <summary className="text-sm text-neutral-600 cursor-pointer">Ver cierres anteriores</summary>
-                  <div className="mt-2 space-y-2 max-h-48 overflow-auto pr-1">
-                    {branchState.cash.closures.length === 0 && <div className="text-xs text-neutral-500">Aún no hay cierres.</div>}
-                    {branchState.cash.closures.slice().reverse().map((c) => (
-                      <div key={c.id} className="border rounded-lg p-2 text-xs">
-                        <div className="flex justify-between"><b>{c.branchName}</b><span>{new Date(c.closedAt).toLocaleString()}</span></div>
-                        <div className="grid grid-cols-2 gap-1 mt-1">
-                          <div>Inicial: {bs(c.initialCash)}</div>
-                          <div>Ingresos: {bs(c.ingresos)}</div>
-                          <div>Egresos: {bs(c.egresos)}</div>
-                          <div className="font-semibold">Total caja: {bs(c.totalCaja)}</div>
-                          <div>Ventas: {c.ventasCount}</div>
-                          <div>Importe ventas: {bs(c.ventasTotal)}</div>
-                        </div>
-                        <div className="mt-1 flex gap-2 justify-end">
-                          <button className="px-2 py-1 text-xs rounded-lg bg-white border" onClick={() => exportClosureCSV(c)}>Exportar CSV</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="text-sm">
-                  <div className="flex justify-between"><span>Inicio:</span><span>{fmtTime(branchState.cash.currentShift.openedAt)}</span></div>
-                  <div className="flex justify-between"><span>Inicial:</span><span>{bs(branchState.cash.currentShift.initialCash)}</span></div>
-                  <div className="flex justify-between"><span>Ingresos:</span><span>{bs(cajaResumen?.ingresos || 0)}</span></div>
-                  <div className="flex justify-between"><span>Egresos:</span><span>{bs(cajaResumen?.egresos || 0)}</span></div>
-                  <div className="flex justify-between font-semibold"><span>Total caja:</span><span>{bs(cajaResumen?.totalCaja || 0)}</span></div>
-                </div>
-                <div className="flex gap-2">
-                  <button className="px-3 py-1.5 rounded-xl bg-white border shadow-sm text-sm"
-                    onClick={() => { const c = prompt("Concepto del ingreso:"); if (!c) return; const a = prompt("Monto (Bs):", "0"); if (a != null) movimientoCaja("ingreso", c, Number(a)); }}
-                  >+ Ingreso</button>
-                  <button className="px-3 py-1.5 rounded-xl bg-white border shadow-sm text-sm"
-                    onClick={() => { const c = prompt("Concepto del egreso:"); if (!c) return; const a = prompt("Monto (Bs):", "0"); if (a != null) movimientoCaja("egreso", c, Number(a)); }}
-                  >- Egreso</button>
-                  <button className="ml-auto px-3 py-1.5 rounded-xl bg-rose-600 text-white text-sm" onClick={cerrarCaja}>Cerrar turno</button>
-                </div>
-              </div>
-            )}
-          </div>
+      <button
+        onClick={() => openPopup('config')}
+        className="px-3 py-2 rounded-xl bg-white border shadow-sm text-left hover:bg-neutral-50"
+      >
+        ⚙️ Configuración
+        <div className="text-xs text-neutral-500">Abrir ventana emergente</div>
+      </button>
 
-          {/* Inventario y Kardex */}
-          <InventoryCard branchState={branchState} setByBranch={setByBranch} selectedBranchId={selectedBranchId} ingresoStock={ingresoStock} egresoStockManual={egresoStockManual} />
+      {authUser.role === 'Administrador' && (
+        <button
+          onClick={() => openPopup('users')}
+          className="px-3 py-2 rounded-xl bg-white border shadow-sm text-left hover:bg-neutral-50"
+        >
+          👤 Usuarios
+          <div className="text-xs text-neutral-500">Abrir ventana emergente</div>
+        </button>
+      )}
+    </div>
+  </div>
 
-          {/* Reportes (rango+filtros) */}
-          <ReportsCard branchState={branchState} selectedBranch={selectedBranch} reportFilter={reportFilter} setReportFilter={setReportFilter} reportData={reportData} />
-
-          {/* Configuración */}
-          <div className="bg-white rounded-2xl shadow-sm border p-4">
-            <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Configuración</h3></div>
-            <div className="grid grid-cols-1 gap-2 text-sm">
-              <label className="flex items-center justify-between gap-2">
-                <span>Impresión directa (agente ESC/POS)</span>
-                <input type="checkbox" checked={config.agentPrintEnabled} onChange={(e) => setConfig((c) => ({ ...c, agentPrintEnabled: e.target.checked }))} />
-              </label>
-              <label className="flex items-center justify-between gap-2">
-                <span>PIN de supervisor</span>
-                <input type="password" className="border rounded-lg px-2 py-1" value={config.supervisorPin} onChange={(e) => setConfig((c) => ({ ...c, supervisorPin: e.target.value }))} />
-              </label>
-              <label className="flex flex-col">
-                <span>Encabezado de ticket</span>
-                <input className="border rounded-lg px-2 py-1" value={config.ticketHeader} onChange={(e) => setConfig((c) => ({ ...c, ticketHeader: e.target.value }))} placeholder="Ej.: BILLAR JADE — Sucursal Centro" />
-              </label>
-              <label className="flex flex-col">
-                <span>Logo del ticket (PNG/JPG)</span>
-                <input type="file" accept="image/*" onChange={(e) => handleLogoUpload(e, setConfig)} />
-              </label>
-              {config.ticketLogo && <img src={config.ticketLogo} alt="Logo" className="h-16 object-contain border rounded p-1" />}
-            </div>
-          </div>
-
-          {/* Usuarios (solo admin) */}
-          {authUser.role === 'Administrador' && (
-            <div className="bg-white rounded-2xl shadow-sm border p-4">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="font-semibold">Usuarios</h3>
-                <button className="px-2 py-1 text-xs rounded-lg bg-sky-50 text-sky-700 border" onClick={createUser}>+ Usuario</button>
-              </div>
-              <div className="space-y-1 max-h-56 overflow-auto pr-1 text-sm">
-                {(users || []).map((u) => (
-                  <div key={u.id} className="grid grid-cols-12 gap-2 items-center border rounded-xl p-2">
-                    <div className="col-span-3">{u.username}</div>
-                    <div className="col-span-2">{u.role}</div>
-                    <div className="col-span-3">Sucursal: {branches.find((b) => b.id === u.branchId)?.name || u.branchId}</div>
-                    <div className="col-span-2">{u.active ? 'Activo' : 'Inactivo'}</div>
-                    <div className="col-span-2 flex gap-1 justify-end">
-                      <button className="px-2 py-1 text-xs rounded-lg bg-white border" onClick={() => changePassword(u)}>Cambiar clave</button>
-                      <button className="px-2 py-1 text-xs rounded-lg bg-white border" onClick={() => toggleUser(u)}>{u.active ? 'Desactivar' : 'Activar'}</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </section>
+  {/* (Opcional) si quieres mantener “Tarifas” y “Caja” visibles aquí,
+      puedes volver a pegarlas debajo de este bloque. Si no, deja solo los 4 botones. */}
+</section>
       </main>
 
       {/* Impresión: Ticket 80 mm */}
