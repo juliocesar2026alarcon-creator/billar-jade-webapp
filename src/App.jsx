@@ -549,7 +549,7 @@ if (mini && authUser) {
     );
   }
 
-  if (mini === 'config') {
+ if (mini === 'config') {
   return miniShell(
     <div className="bg-white rounded-2xl shadow-sm border p-4">
       <div className="flex items-center justify-between mb-2">
@@ -557,7 +557,6 @@ if (mini && authUser) {
       </div>
 
       <div className="grid grid-cols-1 gap-2 text-sm">
-
         <label className="flex items-center justify-between gap-2">
           <span>Impresión directa (agente ESC/POS)</span>
           <input
