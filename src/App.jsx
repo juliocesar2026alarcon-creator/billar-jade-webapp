@@ -685,6 +685,139 @@ if (mini && authUser) {
 
   {/* (Opcional) si quieres mantener “Tarifas” y “Caja” visibles aquí,
       puedes volver a pegarlas debajo de este bloque. Si no, deja solo los 4 botones. */}
+  {/* === TARIFAS === */}
+<div className="bg-white rounded-2xl shadow-sm border p-4">
+  <div className="flex items-center justify-between mb-2">
+    <h3 className="font-semibold">Tarifas</h3>
+  </div>
+
+  <div className="grid grid-cols-2 gap-2 text-sm">
+    <label className="flex flex-col">
+      <span>Tarifa (Bs/h)</span>
+      <input
+        type="number"
+        className="border rounded-lg px-2 py-1"
+        value={config.ratePerHour}
+        onChange={(e) => setConfig((c) => ({ ...c, ratePerHour: Number(e.target.value) }))}
+      />
+    </label>
+
+    <label className="flex flex-col">
+      <span>Fracción (min)</span>
+      <input
+        type="number"
+        className="border rounded-lg px-2 py-1"
+        value={config.fractionMinutes}
+        onChange={(e) => setConfig((c) => ({ ...c, fractionMinutes: Number(e.target.value) }))}
+      />
+    </label>
+
+    <label className="flex flex-col">
+      <span>Mínimo (min)</span>
+      <input
+        type="number"
+        className="border rounded-lg px-2 py-1"
+        value={config.minMinutes}
+        onChange={(e) => setConfig((c) => ({ ...c, minMinutes: Number(e.target.value) }))}
+      />
+    </label>
+
+    <label className="flex items-center justify-between">
+      <span>Redondeo (0.49/0.50)</span>
+      <input
+        type="checkbox"
+        checked={config.roundingEnabled}
+        onChange={(e) => setConfig((c) => ({ ...c, roundingEnabled: e.target.checked }))}
+      />
+    </label>
+  </div>
+</div>
+  {/* === CAJA === */}
+<div className="bg-white rounded-2xl shadow-sm border p-4">
+  <div className="flex items-center justify-between mb-2">
+    <h3 className="font-semibold">Caja</h3>
+  </div>
+
+  {!branchState.cash.currentShift ? (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <input
+          type="number"
+          placeholder="Saldo inicial"
+          className="border rounded-lg px-2 py-1 text-sm"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") abrirCaja(e.currentTarget.value);
+          }}
+        />
+        <button
+          className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-sm"
+          onClick={() => {
+            const v = prompt("Saldo inicial de caja:", "0");
+            if (v != null) abrirCaja(Number(v));
+          }}
+        >
+          Abrir
+        </button>
+      </div>
+    </div>
+  ) : (
+    <div className="text-sm">
+      <div className="flex justify-between">
+        <span>Inicio:</span>
+        <span>{fmtTime(branchState.cash.currentShift.openedAt)}</span>
+      </div>
+      <div className="flex justify-between">
+        <span>Inicial:</span>
+        <span>{bs(branchState.cash.currentShift.initialCash)}</span>
+      </div>
+      <div className="flex justify-between">
+        <span>Ingresos:</span>
+        <span>{bs(cajaResumen?.ingresos || 0)}</span>
+      </div>
+      <div className="flex justify-between">
+        <span>Egresos:</span>
+        <span>{bs(cajaResumen?.egresos || 0)}</span>
+      </div>
+      <div className="flex justify-between font-semibold">
+        <span>Total caja:</span>
+        <span>{bs(cajaResumen?.totalCaja || 0)}</span>
+      </div>
+
+      <div className="flex gap-2 mt-2">
+        <button
+          className="px-3 py-1.5 rounded-xl bg-white border shadow-sm text-sm"
+          onClick={() => {
+            const c = prompt("Concepto del ingreso:");
+            if (!c) return;
+            const a = prompt("Monto (Bs):", "0");
+            if (a != null) movimientoCaja("ingreso", c, Number(a));
+          }}
+        >
+          + Ingreso
+        </button>
+
+        <button
+          className="px-3 py-1.5 rounded-xl bg-white border shadow-sm text-sm"
+          onClick={() => {
+            const c = prompt("Concepto del egreso:");
+            if (!c) return;
+            const a = prompt("Monto (Bs):", "0");
+            if (a != null) movimientoCaja("egreso", c, Number(a));
+          }}
+        >
+          - Egreso
+        </button>
+
+        <button
+          className="ml-auto px-3 py-1.5 rounded-xl bg-rose-600 text-white text-sm"
+          onClick={cerrarCaja}
+        >
+          Cerrar turno
+        </button>
+      </div>
+    </div>
+  )}
+</div>
 </section>
       </main>
 
