@@ -1,13 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { deepClone } from './safeClone.js'
-import Modal from './ui/Modal.jsx'
-import ProductPicker from './ui/ProductPicker.jsx'
+import { deepClone } from './safeClone.js';
 
 /**
- * Control de Billar — App.jsx (versión con selector de productos en modal)
+ * Control de Billar — App.jsx (versión con botón “+ Producto” y modal integrado)
+ *
  * - Mantiene lógica de mesas, inventario, caja, reportes y ticket.
- * - Corrige orden de hooks y usar `cur.movements` en cerrarCaja().
- * - Reemplaza los botones sueltos de productos por un botón “+ Producto” con modal.
+ * - Corrige: ordenar hooks, usar `cur.movements` en cerrarCaja(), y JSX balanceado.
+ * - Reemplaza botones sueltos de productos por un botón “+ Producto” que abre un Modal (incluido abajo).
  */
 
 // ======= Utilidades =======
@@ -115,7 +114,7 @@ export default function App() {
         if (stored.byBranch) setByBranch(stored.byBranch);
       } catch(e){ console.warn('Estado previo no válido, se ignora.') }
     }
-// eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => { saveState({ authUser, branches, selectedBranchId, config, byBranch }); }, [authUser, branches, selectedBranchId, config, byBranch]);
@@ -203,7 +202,8 @@ export default function App() {
     updateByBranch((copy) => {
       const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState));
       const t = st.tables.find((x) => x.id === tableId);
-      if (!t || t.status !== "ocupada") return copy; const inv = st.inventory.find((i) => i.id === itemId); if (!inv || inv.stock <= 0) return copy;
+      const inv = st.inventory.find((i) => i.id === itemId);
+      if (!t || t.status !== "ocupada" || !inv || inv.stock <= 0) return copy;
       inv.stock -= 1;
       const existing = t.session.items.find((it) => it.itemId === itemId);
       if (existing) { existing.qty += 1; existing.cost = inv.cost; }
@@ -216,9 +216,12 @@ export default function App() {
     updateByBranch((copy) => {
       const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState));
       const t = st.tables.find((x) => x.id === tableId);
-      if (!t || t.status !== "ocupada") return copy; const inv = st.inventory.find((i) => i.id === itemId);
-      const existing = t.session.items.find((it) => it.itemId === itemId); if (!existing) return copy;
-      existing.qty -= 1; if (inv) inv.stock += 1; pushKardex(st, { itemId: inv.id, name: inv.name, type: 'Devolución', qty: +1, unitCost: inv.cost, ref: t.session.id });
+      const inv = st.inventory.find((i) => i.id === itemId);
+      const existing = t.session.items.find((it) => it.itemId === itemId);
+      if (!t || t.status !== "ocupada" || !existing) return copy;
+      existing.qty -= 1;
+      if (inv) inv.stock += 1;
+      pushKardex(st, { itemId: inv?.id || itemId, name: inv?.name || '—', type: 'Devolución', qty: +1, unitCost: inv?.cost ?? 0, ref: t.session.id });
       if (existing.qty <= 0) t.session.items = t.session.items.filter((it) => it.itemId !== itemId);
       return copy;
     });
@@ -230,7 +233,8 @@ export default function App() {
     updateByBranch((copy) => {
       const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState));
       const t = st.tables.find((x) => x.id === tableId);
-      if (!t || !t.session) return copy; const it = t.session.items.find((x) => x.itemId === itemId); if (!it) return copy;
+      if (!t || !t.session) return copy;
+      const it = t.session.items.find((x) => x.itemId === itemId); if (!it) return copy;
       it.disc = Math.max(0, val);
       return copy;
     });
@@ -241,17 +245,30 @@ export default function App() {
     updateByBranch((copy) => {
       const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState));
       const t = st.tables.find((x) => x.id === tableId);
-      if (!t || !t.session) return copy; t.session.discountTotal = Math.max(0, val); return copy;
+      if (!t || !t.session) return copy;
+      t.session.discountTotal = Math.max(0, val);
+      return copy;
     });
   };
+
   const stopTable = (tableId, { imprimir = true } = {}) => {
     updateByBranch((copy) => {
       const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState));
       const t = st.tables.find((x) => x.id === tableId);
       if (!t || t.status !== "ocupada") return copy;
-      if (t.session.isPaused) { t.session.isPaused = false; t.session.pausedMs += (nowTs() - (t.session.pausedAt || nowTs())); t.session.pausedAt = null; }
+      if (t.session.isPaused) {
+        t.session.isPaused = false;
+        t.session.pausedMs += (nowTs() - (t.session.pausedAt || nowTs()));
+        t.session.pausedAt = null;
+      }
       const end = nowTs();
-      const tarifa = computeCharge({ start: t.session.start, end, ratePerHour: config.ratePerHour, minMinutes: config.minMinutes, fractionMinutes: config.fractionMinutes, pausedMs: t.session.pausedMs });
+      const tarifa = computeCharge({
+        start: t.session.start, end,
+        ratePerHour: config.ratePerHour,
+        minMinutes: config.minMinutes,
+        fractionMinutes: config.fractionMinutes,
+        pausedMs: t.session.pausedMs
+      });
       const productosBruto = t.session.items.reduce((acc, it) => acc + (it.price * it.qty), 0);
       const productosDesc = t.session.items.reduce((acc, it) => acc + Math.min(it.disc || 0, it.price * it.qty), 0);
       const productosNeto = Math.max(0, productosBruto - productosDesc);
@@ -259,7 +276,8 @@ export default function App() {
       const subtotal = tarifa.amount + productosNeto;
       const totalBruto = subtotal - (t.session.discountTotal || 0);
       const totalCobrar = config.roundingEnabled ? roundBs(totalBruto) : totalBruto;
-      const margin = (tarifa.amount + productosNeto) - costoProductos; // costo tiempo = 0
+      const margin = (tarifa.amount + productosNeto) - costoProductos;
+
       const closed = {
         id: t.session.id,
         branchId: selectedBranchId,
@@ -284,9 +302,14 @@ export default function App() {
         closedBy: authUser?.username || "",
         roundingApplied: config.roundingEnabled,
       };
+
       st.sessions.push(closed);
       if (st.cash.currentShift) {
-        st.cash.currentShift.movements.push({ id: uid("mov"), type: "venta", at: end, concept: `Consumo ${t.name}`, amount: closed.total, by: authUser?.username || "", data: { sessionId: closed.id, tableName: t.name } });
+        st.cash.currentShift.movements.push({
+          id: uid("mov"), type: "venta", at: end,
+          concept: `Consumo ${t.name}`, amount: closed.total, by: authUser?.username || "",
+          data: { sessionId: closed.id, tableName: t.name }
+        });
       }
       t.status = "libre"; t.session = null;
       if (imprimir) setTimeout(() => openTicket(closed, selectedBranch?.name || ""), 60);
@@ -295,25 +318,59 @@ export default function App() {
   };
 
   // ======= Caja =======
-  const abrirCaja = (initialCash) => { updateByBranch((copy) => { const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState)); if (st.cash.currentShift) return copy; st.cash.currentShift = { id: uid("turno"), openedAt: nowTs(), openedBy: authUser?.username || "", initialCash: Number(initialCash) || 0, movements: [] }; return copy; }); };
-  const movimientoCaja = (type, concept, amount) => { updateByBranch((copy) => { const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState)); if (!st.cash.currentShift) return copy; st.cash.currentShift.movements.push({ id: uid("mov"), type, at: nowTs(), concept, amount: Number(amount) || 0, by: authUser?.username || "" }); return copy; }); };
-  const cerrarCaja = () => { updateByBranch((copy) => { const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState)); if (!st.cash.currentShift) return copy; const cur = st.cash.currentShift; cur.closedAt = nowTs(); cur.closedBy = authUser?.username || "";
-    const ingresos = cur.movements
-      .filter((m) => m.type === "venta" || m.type === "ingreso")
-      .reduce((a, m) => a + m.amount, 0);
-    const egresos = cur.movements
-      .filter((m) => m.type === "egreso")
-      .reduce((a, m) => a + m.amount, 0);
-    const totalCaja = cur.initialCash + ingresos - egresos;
-    const ventas = cur.movements.filter((m) => m.type === "venta");
-    const cierre = { id: uid("cierre"), branchId: selectedBranchId, branchName: selectedBranch?.name || "", openedAt: cur.openedAt, closedAt: cur.closedAt, openedBy: cur.openedBy, closedBy: cur.closedBy, initialCash: cur.initialCash, ingresos, egresos, totalCaja, ventasCount: ventas.length, ventasTotal: ventas.reduce((a, m) => a + m.amount, 0) };
-    st.cash.shifts.push(cur); st.cash.closures.push(cierre); st.cash.currentShift = null; return copy; }); };
+  const abrirCaja = (initialCash) => {
+    updateByBranch((copy) => {
+      const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState));
+      if (st.cash.currentShift) return copy;
+      st.cash.currentShift = { id: uid("turno"), openedAt: nowTs(), openedBy: authUser?.username || "", initialCash: Number(initialCash) || 0, movements: [] };
+      return copy;
+    });
+  };
+  const movimientoCaja = (type, concept, amount) => {
+    updateByBranch((copy) => {
+      const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState));
+      if (!st.cash.currentShift) return copy;
+      st.cash.currentShift.movements.push({ id: uid("mov"), type, at: nowTs(), concept, amount: Number(amount) || 0, by: authUser?.username || "" });
+      return copy;
+    });
+  };
+  const cerrarCaja = () => {
+    updateByBranch((copy) => {
+      const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState));
+      if (!st.cash.currentShift) return copy;
+      const cur = st.cash.currentShift;
+      cur.closedAt = nowTs(); cur.closedBy = authUser?.username || "";
+
+      const ingresos = cur.movements
+        .filter((m) => m.type === "venta" || m.type === "ingreso")
+        .reduce((a, m) => a + m.amount, 0);
+      const egresos = cur.movements
+        .filter((m) => m.type === "egreso")
+        .reduce((a, m) => a + m.amount, 0);
+      const totalCaja = cur.initialCash + ingresos - egresos;
+      const ventas = cur.movements.filter((m) => m.type === "venta");
+
+      const cierre = {
+        id: uid("cierre"),
+        branchId: selectedBranchId,
+        branchName: selectedBranch?.name || "",
+        openedAt: cur.openedAt, closedAt: cur.closedAt,
+        openedBy: cur.openedBy, closedBy: cur.closedBy,
+        initialCash: cur.initialCash, ingresos, egresos, totalCaja,
+        ventasCount: ventas.length, ventasTotal: ventas.reduce((a, m) => a + m.amount, 0)
+      };
+      st.cash.shifts.push(cur); st.cash.closures.push(cierre); st.cash.currentShift = null;
+      return copy;
+    });
+  };
 
   const cajaResumen = useMemo(() => {
-    const st = branchState; if (!st) return null; const turno = st.cash.currentShift; if (!turno) return null;
+    const st = branchState; if (!st) return null;
+    const turno = st.cash.currentShift; if (!turno) return null;
     const ingresos = turno.movements.filter((m) => m.type === "venta" || m.type === "ingreso").reduce((a, m) => a + m.amount, 0);
     const egresos = turno.movements.filter((m) => m.type === "egreso").reduce((a, m) => a + m.amount, 0);
-    const totalCaja = turno.initialCash + ingresos - egresos; return { ingresos, egresos, totalCaja };
+    const totalCaja = turno.initialCash + ingresos - egresos;
+    return { ingresos, egresos, totalCaja };
   }, [branchState]);
 
   // ======= Ticket & Agente =======
@@ -329,7 +386,10 @@ export default function App() {
   }
   async function tryAgentPrint(payload) {
     try {
-      const res = await fetch('http://localhost:18401/print', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'billar_ticket_v1', payload }) });
+      const res = await fetch('http://localhost:18401/print', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'billar_ticket_v1', payload })
+      });
       if (!res.ok) throw new Error('Agente no respondió');
     } catch (e) { throw e; }
   }
@@ -348,25 +408,42 @@ export default function App() {
     const productos = sessions.reduce((a, s) => a + s.productosNeto, 0);
     const total = sessions.reduce((a, s) => a + s.total, 0);
     const margen = sessions.reduce((a, s) => a + s.margin, 0);
-    // Agregados por producto
+
+    // Agregado por producto
     const prodMap = new Map();
     for (const s of sessions) {
       for (const it of s.items) {
         const key = it.name;
         const agg = prodMap.get(key) || { name: key, qty: 0, venta: 0, costo: 0, margen: 0 };
-        agg.qty += it.qty; agg.venta += (it.price * it.qty) - (it.disc || 0); agg.costo += (it.cost * it.qty); agg.margen += ((it.price * it.qty) - (it.disc || 0) - (it.cost * it.qty));
+        agg.qty += it.qty;
+        agg.venta += (it.price * it.qty) - (it.disc || 0);
+        agg.costo += (it.cost * it.qty);
+        agg.margen += ((it.price * it.qty) - (it.disc || 0) - (it.cost * it.qty));
         prodMap.set(key, agg);
       }
     }
     const prodAgg = Array.from(prodMap.values());
+
     // Por cajero
     const cashMap = new Map();
-    for (const s of sessions) { const k = s.closedBy || '—'; const a = cashMap.get(k) || { cajero: k, ventas: 0 }; a.ventas += s.total; cashMap.set(k, a); }
+    for (const s of sessions) {
+      const k = s.closedBy || '—';
+      const a = cashMap.get(k) || { cajero: k, ventas: 0 };
+      a.ventas += s.total;
+      cashMap.set(k, a);
+    }
     const byCashier = Array.from(cashMap.values());
+
     // Por mesa
     const tbMap = new Map();
-    for (const s of sessions) { const k = s.tableName; const a = tbMap.get(k) || { mesa: k, ventas: 0 }; a.ventas += s.total; tbMap.set(k, a); }
+    for (const s of sessions) {
+      const k = s.tableName;
+      const a = tbMap.get(k) || { mesa: k, ventas: 0 };
+      a.ventas += s.total;
+      tbMap.set(k, a);
+    }
     const byTable = Array.from(tbMap.values());
+
     return { sessions, totals: { tiempo, productos, total, margen }, prodAgg, byCashier, byTable };
   }, [branchState, reportFilter]);
 
@@ -382,9 +459,11 @@ export default function App() {
     const np = prompt(`Nueva contraseña para ${u.username}:`, ''); if (!np) return;
     setUsers((prev) => (prev || []).map((x) => x.id === u.id ? { ...x, password: np } : x));
   };
-  const toggleUser = (u) => { setUsers((prev) => (prev || []).map((x) => x.id === u.id ? { ...x, active: !x.active } : x)); };
+  const toggleUser = (u) => {
+    setUsers((prev) => (prev || []).map((x) => x.id === u.id ? { ...x, active: !x.active } : x));
+  };
 
-  // ======= Hooks dependientes del auth (colocar antes del Gate) =======
+  // Hooks dependientes del auth (antes del Gate)
   const canEditTariff = authUser?.role === "Administrador";
   const isCajero = authUser?.role === 'Cajero';
   useEffect(() => { if (isCajero && authUser?.branchId) setSelectedBranchId(authUser.branchId); }, [isCajero, authUser]);
@@ -395,8 +474,12 @@ export default function App() {
       <LoginScreen
         onLogin={(username, password) => {
           const found = (users || []).find((x) => x.username === username && x.password === password && x.active);
-          if (found) { setAuthUser({ username: found.username, role: found.role, branchId: found.branchId }); setSelectedBranchId(found.role === 'Cajero' ? found.branchId : selectedBranchId); }
-          else alert('Usuario o contraseña incorrectos');
+          if (found) {
+            setAuthUser({ username: found.username, role: found.role, branchId: found.branchId });
+            setSelectedBranchId(found.role === 'Cajero' ? found.branchId : selectedBranchId);
+          } else {
+            alert('Usuario o contraseña incorrectos');
+          }
         }}
         onInitAdmin={() => setUsers(DEFAULT_USERS)}
       />
@@ -430,18 +513,46 @@ export default function App() {
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-xl font-semibold">Mesas</h2>
             <div className="flex gap-2">
-              <button onClick={() => updateByBranch((prev) => { const copy = deepClone(prev); (copy[selectedBranchId] ||= deepClone(branchState)).tables.push({ id: uid("mesa"), name: `Mesa ${(copy[selectedBranchId].tables.length) + 1}`, status: 'libre', session: null }); return copy; })} className="px-3 py-1.5 rounded-xl bg-white border shadow-sm text-sm hover:bg-neutral-50">+ Mesa</button>
+              <button
+                onClick={() => updateByBranch((prev) => {
+                  const copy = deepClone(prev);
+                  (copy[selectedBranchId] ||= deepClone(branchState))
+                    .tables.push({ id: uid("mesa"), name: `Mesa ${(copy[selectedBranchId].tables.length) + 1}`, status: 'libre', session: null });
+                  return copy;
+                })}
+                className="px-3 py-1.5 rounded-xl bg-white border shadow-sm text-sm hover:bg-neutral-50"
+              >
+                + Mesa
+              </button>
             </div>
           </div>
-          {/* Reja de mesas estándar (sin CSS extra) */}
+
+          {/* Reja de mesas */}
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
             {(branchState.tables || []).map((t) => (
-              <MesaCard key={t.id} table={t} config={config}
-                onStart={() => startTable(t.id)} onStop={() => stopTable(t.id)} onRename={(name) => updateByBranch((prev) => { const copy = deepClone(prev); const tab = (copy[selectedBranchId] ||= deepClone(branchState)).tables.find((x) => x.id === t.id); if (tab) tab.name = name; return copy; })}
+              <MesaCard
+                key={t.id}
+                table={t}
+                config={config}
+                onStart={() => startTable(t.id)}
+                onStop={() => stopTable(t.id)}
+                onRename={(name) => updateByBranch((prev) => {
+                  const copy = deepClone(prev);
+                  const tab = (copy[selectedBranchId] ||= deepClone(branchState)).tables.find((x) => x.id === t.id);
+                  if (tab) tab.name = name;
+                  return copy;
+                })}
                 inventory={branchState.inventory}
-                onAddItem={(itemId) => addItemToTable(t.id, itemId)} onRemoveItem={(itemId) => removeItemFromTable(t.id, itemId)}
-                onCustomerChange={(name) => updateByBranch((prev) => { const copy = deepClone(prev); const tab = (copy[selectedBranchId] ||= deepClone(branchState)).tables.find((x) => x.id === t.id); if (tab?.session) tab.session.customerName = name; return copy; })}
-                onPauseResume={() => pauseResumeTable(t.id)} onMove={() => moveSessionToTable(t.id)}
+                onAddItem={(itemId) => addItemToTable(t.id, itemId)}
+                onRemoveItem={(itemId) => removeItemFromTable(t.id, itemId)}
+                onCustomerChange={(name) => updateByBranch((prev) => {
+                  const copy = deepClone(prev);
+                  const tab = (copy[selectedBranchId] ||= deepClone(branchState)).tables.find((x) => x.id === t.id);
+                  if (tab?.session) tab.session.customerName = name;
+                  return copy;
+                })}
+                onPauseResume={() => pauseResumeTable(t.id)}
+                onMove={() => moveSessionToTable(t.id)}
                 onItemDiscount={(itemId) => applyItemDiscount(t.id, itemId, prompt('PIN Supervisor:') || '')}
                 onMesaDiscount={() => applyMesaDiscount(t.id, prompt('PIN Supervisor:') || '')}
               />
@@ -453,24 +564,48 @@ export default function App() {
         <section className="space-y-4">
           {/* Tarifas */}
           <div className="bg-white rounded-2xl shadow-sm border p-4">
-            <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Tarifas</h3>{!canEditTariff && <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border">Solo visualización</span>}</div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-semibold">Tarifas</h3>
+              {!canEditTariff && <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border">Solo visualización</span>}
+            </div>
             <div className="grid grid-cols-2 gap-2 text-sm">
-              <label className="flex flex-col"><span>Tarifa (Bs/h)</span><input type="number" className="border rounded-lg px-2 py-1" value={config.ratePerHour} disabled={!canEditTariff} onChange={(e) => setConfig((c) => ({ ...c, ratePerHour: Number(e.target.value) }))} /></label>
-              <label className="flex flex-col"><span>Fracción (min)</span><input type="number" className="border rounded-lg px-2 py-1" value={config.fractionMinutes} disabled={!canEditTariff} onChange={(e) => setConfig((c) => ({ ...c, fractionMinutes: Number(e.target.value) }))} /></label>
-              <label className="flex flex-col"><span>Mínimo (min)</span><input type="number" className="border rounded-lg px-2 py-1" value={config.minMinutes} disabled={!canEditTariff} onChange={(e) => setConfig((c) => ({ ...c, minMinutes: Number(e.target.value) }))} /></label>
-              <label className="flex items-center justify-between"><span>Redondeo 0.49/0.50</span><input type="checkbox" checked={config.roundingEnabled} onChange={(e) => setConfig((c) => ({ ...c, roundingEnabled: e.target.checked }))} /></label>
+              <label className="flex flex-col">
+                <span>Tarifa (Bs/h)</span>
+                <input type="number" className="border rounded-lg px-2 py-1" value={config.ratePerHour} disabled={!canEditTariff} onChange={(e) => setConfig((c) => ({ ...c, ratePerHour: Number(e.target.value) }))} />
+              </label>
+              <label className="flex flex-col">
+                <span>Fracción (min)</span>
+                <input type="number" className="border rounded-lg px-2 py-1" value={config.fractionMinutes} disabled={!canEditTariff} onChange={(e) => setConfig((c) => ({ ...c, fractionMinutes: Number(e.target.value) }))} />
+              </label>
+              <label className="flex flex-col">
+                <span>Mínimo (min)</span>
+                <input type="number" className="border rounded-lg px-2 py-1" value={config.minMinutes} disabled={!canEditTariff} onChange={(e) => setConfig((c) => ({ ...c, minMinutes: Number(e.target.value) }))} />
+              </label>
+              <label className="flex items-center justify-between">
+                <span>Redondeo 0.49/0.50</span>
+                <input type="checkbox" checked={config.roundingEnabled} onChange={(e) => setConfig((c) => ({ ...c, roundingEnabled: e.target.checked }))} />
+              </label>
             </div>
           </div>
 
           {/* Caja */}
           <div className="bg-white rounded-2xl shadow-sm border p-4">
-            <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Caja</h3>{branchState.cash.currentShift ? (<span className="text-xs bg-emerald-50 text-emerald-700 border px-2 py-0.5 rounded-full">Turno abierto</span>) : (<span className="text-xs bg-neutral-50 text-neutral-600 border px-2 py-0.5 rounded-full">Turno cerrado</span>)}</div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-semibold">Caja</h3>
+              {branchState.cash.currentShift
+                ? <span className="text-xs bg-emerald-50 text-emerald-700 border px-2 py-0.5 rounded-full">Turno abierto</span>
+                : <span className="text-xs bg-neutral-50 text-neutral-600 border px-2 py-0.5 rounded-full">Turno cerrado</span>}
+            </div>
+
             {!branchState.cash.currentShift ? (
               <div className="space-y-3">
                 <div className="flex gap-2">
                   <input type="number" placeholder="Saldo inicial" className="border rounded-lg px-2 py-1 text-sm" onKeyDown={(e) => { if (e.key === "Enter") abrirCaja(e.currentTarget.value); }} />
-                  <button className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-sm" onClick={() => { const v = prompt("Saldo inicial de caja:", "0"); if (v != null) abrirCaja(Number(v)); }}>Abrir</button>
+                  <button className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-sm"
+                    onClick={() => { const v = prompt("Saldo inicial de caja:", "0"); if (v != null) abrirCaja(Number(v)); }}
+                  >Abrir</button>
                 </div>
+
                 <details>
                   <summary className="text-sm text-neutral-600 cursor-pointer">Ver cierres anteriores</summary>
                   <div className="mt-2 space-y-2 max-h-48 overflow-auto pr-1">
@@ -504,8 +639,12 @@ export default function App() {
                   <div className="flex justify-between font-semibold"><span>Total caja:</span><span>{bs(cajaResumen?.totalCaja || 0)}</span></div>
                 </div>
                 <div className="flex gap-2">
-                  <button className="px-3 py-1.5 rounded-xl bg-white border shadow-sm text-sm" onClick={() => { const c = prompt("Concepto del ingreso:"); if (!c) return; const a = prompt("Monto (Bs):", "0"); if (a != null) movimientoCaja("ingreso", c, Number(a)); }}>+ Ingreso</button>
-                  <button className="px-3 py-1.5 rounded-xl bg-white border shadow-sm text-sm" onClick={() => { const c = prompt("Concepto del egreso:"); if (!c) return; const a = prompt("Monto (Bs):", "0"); if (a != null) movimientoCaja("egreso", c, Number(a)); }}>- Egreso</button>
+                  <button className="px-3 py-1.5 rounded-xl bg-white border shadow-sm text-sm"
+                    onClick={() => { const c = prompt("Concepto del ingreso:"); if (!c) return; const a = prompt("Monto (Bs):", "0"); if (a != null) movimientoCaja("ingreso", c, Number(a)); }}
+                  >+ Ingreso</button>
+                  <button className="px-3 py-1.5 rounded-xl bg-white border shadow-sm text-sm"
+                    onClick={() => { const c = prompt("Concepto del egreso:"); if (!c) return; const a = prompt("Monto (Bs):", "0"); if (a != null) movimientoCaja("egreso", c, Number(a)); }}
+                  >- Egreso</button>
                   <button className="ml-auto px-3 py-1.5 rounded-xl bg-rose-600 text-white text-sm" onClick={cerrarCaja}>Cerrar turno</button>
                 </div>
               </div>
@@ -514,6 +653,7 @@ export default function App() {
 
           {/* Inventario y Kardex */}
           <InventoryCard branchState={branchState} setByBranch={setByBranch} selectedBranchId={selectedBranchId} ingresoStock={ingresoStock} egresoStockManual={egresoStockManual} />
+
           {/* Reportes (rango+filtros) */}
           <ReportsCard branchState={branchState} selectedBranch={selectedBranch} reportFilter={reportFilter} setReportFilter={setReportFilter} reportData={reportData} />
 
@@ -521,10 +661,22 @@ export default function App() {
           <div className="bg-white rounded-2xl shadow-sm border p-4">
             <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Configuración</h3></div>
             <div className="grid grid-cols-1 gap-2 text-sm">
-              <label className="flex items-center justify-between gap-2"><span>Impresión directa (agente ESC/POS)</span><input type="checkbox" checked={config.agentPrintEnabled} onChange={(e) => setConfig((c) => ({ ...c, agentPrintEnabled: e.target.checked }))} /></label>
-              <label className="flex items-center justify-between gap-2"><span>PIN de supervisor</span><input type="password" className="border rounded-lg px-2 py-1" value={config.supervisorPin} onChange={(e) => setConfig((c) => ({ ...c, supervisorPin: e.target.value }))} /></label>
-              <label className="flex flex-col"><span>Encabezado de ticket</span><input className="border rounded-lg px-2 py-1" value={config.ticketHeader} onChange={(e) => setConfig((c) => ({ ...c, ticketHeader: e.target.value }))} placeholder="Ej.: BILLAR JADE — Sucursal Centro" /></label>
-              <label className="flex flex-col"><span>Logo del ticket (PNG/JPG)</span><input type="file" accept="image/*" onChange={(e) => handleLogoUpload(e, setConfig)} /></label>
+              <label className="flex items-center justify-between gap-2">
+                <span>Impresión directa (agente ESC/POS)</span>
+                <input type="checkbox" checked={config.agentPrintEnabled} onChange={(e) => setConfig((c) => ({ ...c, agentPrintEnabled: e.target.checked }))} />
+              </label>
+              <label className="flex items-center justify-between gap-2">
+                <span>PIN de supervisor</span>
+                <input type="password" className="border rounded-lg px-2 py-1" value={config.supervisorPin} onChange={(e) => setConfig((c) => ({ ...c, supervisorPin: e.target.value }))} />
+              </label>
+              <label className="flex flex-col">
+                <span>Encabezado de ticket</span>
+                <input className="border rounded-lg px-2 py-1" value={config.ticketHeader} onChange={(e) => setConfig((c) => ({ ...c, ticketHeader: e.target.value }))} placeholder="Ej.: BILLAR JADE — Sucursal Centro" />
+              </label>
+              <label className="flex flex-col">
+                <span>Logo del ticket (PNG/JPG)</span>
+                <input type="file" accept="image/*" onChange={(e) => handleLogoUpload(e, setConfig)} />
+              </label>
               {config.ticketLogo && <img src={config.ticketLogo} alt="Logo" className="h-16 object-contain border rounded p-1" />}
             </div>
           </div>
@@ -532,7 +684,10 @@ export default function App() {
           {/* Usuarios (solo admin) */}
           {authUser.role === 'Administrador' && (
             <div className="bg-white rounded-2xl shadow-sm border p-4">
-              <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Usuarios</h3><button className="px-2 py-1 text-xs rounded-lg bg-sky-50 text-sky-700 border" onClick={createUser}>+ Usuario</button></div>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-semibold">Usuarios</h3>
+                <button className="px-2 py-1 text-xs rounded-lg bg-sky-50 text-sky-700 border" onClick={createUser}>+ Usuario</button>
+              </div>
               <div className="space-y-1 max-h-56 overflow-auto pr-1 text-sm">
                 {(users || []).map((u) => (
                   <div key={u.id} className="grid grid-cols-12 gap-2 items-center border rounded-xl p-2">
@@ -560,7 +715,12 @@ export default function App() {
       </div>
 
       <style>{`
-        @media print { @page { size: 80mm auto; margin: 4mm; } body * { visibility: hidden; } #ticket, #ticket * { visibility: visible; } #ticket { position: absolute; left: 0; top: 0; } }
+        @media print {
+          @page { size: 80mm auto; margin: 4mm; }
+          body * { visibility: hidden; }
+          #ticket, #ticket * { visibility: visible; }
+          #ticket { position: absolute; left: 0; top: 0; }
+        }
       `}</style>
     </div>
   );
@@ -575,15 +735,29 @@ function Clock({ tick }){
   )
 }
 
-function MesaCard({ table, config, onStart, onStop, onRename, inventory, onAddItem, onRemoveItem, onCustomerChange, onPauseResume, onMove, onItemDiscount, onMesaDiscount }) {
+function MesaCard({
+  table, config, onStart, onStop, onRename,
+  inventory, onAddItem, onRemoveItem, onCustomerChange,
+  onPauseResume, onMove, onItemDiscount, onMesaDiscount
+}) {
   const start = table?.session?.start
   const pausedMs = table?.session?.pausedMs
   const isPaused = table?.session?.isPaused
   const pausedAt = table?.session?.pausedAt
   const [t, setT] = useState(0)
   const [showPicker, setShowPicker] = useState(false)
+
   useEffect(() => { const i = setInterval(() => setT(Date.now()), 1000); return () => clearInterval(i) }, [])
-  const tarifa = useMemo(() => { if (!table.session) return null; const extraPause = isPaused ? (Date.now() - (pausedAt || Date.now())) : 0; return computeCharge({ start: start, end: Date.now(), ratePerHour: config.ratePerHour, minMinutes: config.minMinutes, fractionMinutes: config.fractionMinutes, pausedMs: (pausedMs || 0) + extraPause }); }, [table.session, config, t]);
+  const tarifa = useMemo(() => {
+    if (!table.session) return null;
+    const extraPause = isPaused ? (Date.now() - (pausedAt || Date.now())) : 0;
+    return computeCharge({
+      start: start, end: Date.now(),
+      ratePerHour: config.ratePerHour, minMinutes: config.minMinutes, fractionMinutes: config.fractionMinutes,
+      pausedMs: (pausedMs || 0) + extraPause
+    });
+  }, [table.session, config, t, isPaused, pausedAt, pausedMs, start]);
+
   return (
     <div className={`rounded-2xl border shadow-sm p-3 ${table.status === "ocupada" ? "bg-emerald-50 border-emerald-200" : "bg-white"}`}>
       <div className="flex items-center justify-between mb-2">
@@ -601,9 +775,19 @@ function MesaCard({ table, config, onStart, onStop, onRename, inventory, onAddIt
       {table.status === "ocupada" && table.session && (
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-2 text-sm">
+            {/* Columna izquierda */}
             <div className="bg-white rounded-xl p-2 border">
               <div className="flex justify-between"><span>Inicio</span><b>{fmtTime(table.session.start)}</b></div>
-              <div className="flex justify-between"><span>Cronómetro</span><b>{(() => { const ms = Math.max(0, (Date.now() - start - (pausedMs || 0) - (isPaused ? (Date.now() - (pausedAt || Date.now())) : 0))); const sec = Math.floor(ms/1000); const mm = String(Math.floor(sec/60)).padStart(2,'0'); const ss = String(sec%60).padStart(2,'0'); return `${mm}:${ss}` })()}</b></div>
+              <div className="flex justify-between">
+                <span>Cronómetro</span>
+                <b>{(() => {
+                  const ms = Math.max(0, (Date.now() - start - (pausedMs || 0) - (isPaused ? (Date.now() - (pausedAt || Date.now())) : 0)));
+                  const sec = Math.floor(ms/1000);
+                  const mm = String(Math.floor(sec/60)).padStart(2,'0');
+                  const ss = String(sec%60).padStart(2,'0');
+                  return `${mm}:${ss}`;
+                })()}</b>
+              </div>
               <div className="flex justify-between"><span>Facturable</span><b>{tarifa?.rounded ?? 0} min</b></div>
               <div className="flex justify-between"><span>Importe</span><b>{bs(tarifa?.amount ?? 0)}</b></div>
               <div className="flex gap-2 mt-2">
@@ -614,11 +798,18 @@ function MesaCard({ table, config, onStart, onStop, onRename, inventory, onAddIt
                 <button className="px-2 py-1 rounded-lg bg-white border text-xs" onClick={onMesaDiscount}>Desc. mesa</button>
               </div>
             </div>
+
+            {/* Columna derecha */}
             <div className="bg-white rounded-xl p-2 border">
               <div className="font-medium mb-1">Cliente</div>
-              <input className="w-full border rounded-lg px-2 py-1 text-sm mb-2" placeholder="Nombre del cliente (opcional)" value={table.session.customerName} onChange={(e) => onCustomerChange(e.target.value)} />
-              <div className="font-medium mb-1">Productos</div>
+              <input
+                className="w-full border rounded-lg px-2 py-1 text-sm mb-2"
+                placeholder="Nombre del cliente (opcional)"
+                value={table.session.customerName}
+                onChange={(e) => onCustomerChange(e.target.value)}
+              />
 
+              <div className="font-medium mb-1">Productos</div>
               {/* Botón único para abrir modal */}
               <button className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm mb-2" onClick={() => setShowPicker(true)}>+ Producto</button>
 
@@ -663,6 +854,74 @@ function MesaCard({ table, config, onStart, onStop, onRename, inventory, onAddIt
   );
 }
 
+// ======= Modal (incluido en este archivo) =======
+function Modal({ title = '', onClose, children }) {
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-xl w-[min(92vw,700px)] max-h-[88vh] overflow-auto p-4">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-lg font-semibold">{title}</h3>
+          <button className="px-2 py-1 rounded-lg border" onClick={onClose}>✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ======= Selector/Buscador de Productos (incluido en este archivo) =======
+function ProductPicker({ inventory = [], onPick }) {
+  const [q, setQ] = useState('');
+  const list = useMemo(() => {
+    const k = q.trim().toLowerCase();
+    const arr = Array.isArray(inventory) ? inventory : [];
+    return k ? arr.filter(it => (it?.name || '').toLowerCase().includes(k)) : arr;
+  }, [q, inventory]);
+
+  return (
+    <div>
+      <div className="flex gap-2 mb-3">
+        <input
+          className="border rounded-lg px-3 py-2 w-full"
+          placeholder="Buscar producto..."
+          value={q}
+          onChange={e => setQ(e.target.value)}
+        />
+      </div>
+
+      <div className="border rounded-xl overflow-hidden">
+        <div className="grid grid-cols-12 bg-neutral-50 border-b px-3 py-2 text-xs font-medium">
+          <div className="col-span-7">Producto</div>
+          <div className="col-span-2 text-right">Precio</div>
+          <div className="col-span-1 text-right">Stock</div>
+          <div className="col-span-2 text-right">&nbsp;</div>
+        </div>
+
+        <div className="max-h-[50vh] overflow-auto">
+          {list.length === 0 && (
+            <div className="px-3 py-6 text-center text-sm text-neutral-500">Sin resultados</div>
+          )}
+          {list.map(it => (
+            <div key={it.id} className="grid grid-cols-12 items-center px-3 py-2 border-b text-sm">
+              <div className="col-span-7 truncate" title={it.name}>{it.name}</div>
+              <div className="col-span-2 text-right">Bs {Number(it.price || 0).toFixed(2)}</div>
+              <div className="col-span-1 text-right">{it.stock}</div>
+              <div className="col-span-2 flex justify-end">
+                <button
+                  disabled={it.stock <= 0}
+                  className={`px-2 py-1 rounded-lg border text-sm ${it.stock <= 0 ? 'opacity-60 cursor-not-allowed' : 'bg-emerald-600 text-white border-emerald-600'}`}
+                  onClick={() => onPick && onPick(it)}
+                >Agregar</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function InventoryCard({ branchState, setByBranch, selectedBranchId, ingresoStock, egresoStockManual }) {
   const [viewKardexFor, setViewKardexFor] = useState('');
   return (
@@ -671,11 +930,20 @@ function InventoryCard({ branchState, setByBranch, selectedBranchId, ingresoStoc
         <h3 className="font-semibold">Inventario</h3>
         <div className="flex items-center gap-2">
           <button className="px-2 py-1 text-xs rounded-lg bg-sky-50 text-sky-700 border" onClick={() => {
-            const name = prompt("Producto:"); if (!name) return; const price = Number(prompt("Precio venta (Bs):", "0") || 0); const cost = Number(prompt("Precio real/costo (Bs):", "0") || 0); const stock = Number(prompt("Stock inicial:", "0") || 0); const unit = prompt("Unidad (u, bot, etc):", "u") || "u";
-            setByBranch((prev) => { const copy = deepClone(prev || {}); (copy[selectedBranchId] ||= deepClone(branchState)).inventory.push({ id: uid("item"), name, price, cost, stock, unit }); return copy; });
+            const name = prompt("Producto:"); if (!name) return;
+            const price = Number(prompt("Precio venta (Bs):", "0") || 0);
+            const cost = Number(prompt("Precio real/costo (Bs):", "0") || 0);
+            const stock = Number(prompt("Stock inicial:", "0") || 0);
+            const unit = prompt("Unidad (u, bot, etc):", "u") || "u";
+            setByBranch((prev) => {
+              const copy = deepClone(prev || {});
+              (copy[selectedBranchId] ||= deepClone(branchState)).inventory.push({ id: uid("item"), name, price, cost, stock, unit });
+              return copy;
+            });
           }}>+ Producto</button>
         </div>
       </div>
+
       <div className="space-y-1 max-h-60 overflow-auto pr-1">
         {(branchState.inventory || []).map((it) => (
           <div key={it.id} className="grid grid-cols-12 gap-2 items-center text-sm p-2 rounded-xl border hover:bg-neutral-50">
@@ -690,14 +958,26 @@ function InventoryCard({ branchState, setByBranch, selectedBranchId, ingresoStoc
                 const cost = Number(prompt("Nuevo costo (Bs):", String(it.cost)) ?? it.cost);
                 const price = Number(prompt("Nuevo precio venta (Bs):", String(it.price)) ?? it.price);
                 const stock = Number(prompt("Ajustar stock (suma/resta):", "0") || 0);
-                setByBranch((prev) => { const copy = deepClone(prev || {}); const inv = (copy[selectedBranchId] ||= deepClone(branchState)).inventory.find((x) => x.id === it.id); if (!inv) return prev; inv.name = name; inv.cost = cost; inv.price = price; inv.stock = inv.stock + stock; return copy; });
+                setByBranch((prev) => {
+                  const copy = deepClone(prev || {});
+                  const inv = (copy[selectedBranchId] ||= deepClone(branchState)).inventory.find((x) => x.id === it.id);
+                  if (!inv) return prev;
+                  inv.name = name; inv.cost = cost; inv.price = price; inv.stock = inv.stock + stock;
+                  return copy;
+                });
               }}>Editar</button>
               <button className="px-2 py-1 text-xs rounded-lg bg-white border" onClick={() => setViewKardexFor(viewKardexFor === it.id ? '' : it.id)}>Kardex</button>
               <button className="px-2 py-1 text-xs rounded-lg bg-white border" onClick={() => {
-                const qty = Number(prompt('Ingreso cantidad:', '0') || 0); const ucost = Number(prompt('Costo unitario (Bs):', String(it.cost)) || it.cost); if (qty > 0) ingresoStock(it, qty, ucost);
+                const qty = Number(prompt('Ingreso cantidad:', '0') || 0);
+                const ucost = Number(prompt('Costo unitario (Bs):', String(it.cost)) || it.cost);
+                if (qty > 0) ingresoStock(it, qty, ucost);
               }}>Ingreso</button>
-              <button className="px-2 py-1 text-xs rounded-lg bg-white border" onClick={() => { const qty = Number(prompt('Egreso/Ajuste cantidad:', '0') || 0); if (qty > 0) egresoStockManual(it, qty, 'Ajuste'); }}>Egreso</button>
+              <button className="px-2 py-1 text-xs rounded-lg bg-white border" onClick={() => {
+                const qty = Number(prompt('Egreso/Ajuste cantidad:', '0') || 0);
+                if (qty > 0) egresoStockManual(it, qty, 'Ajuste');
+              }}>Egreso</button>
             </div>
+
             {viewKardexFor === it.id && (
               <div className="col-span-12 text-xs border rounded-lg p-2 bg-white">
                 <div className="font-medium mb-1">Kardex: {it.name}</div>
@@ -724,7 +1004,8 @@ function InventoryCard({ branchState, setByBranch, selectedBranchId, ingresoStoc
 function ReportsCard({ branchState, selectedBranch, reportFilter, setReportFilter, reportData }){
   return (
     <div className="bg-white rounded-2xl shadow-sm border p-4">
-      <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Reportes</h3>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="font-semibold">Reportes</h3>
         <div className="flex flex-wrap gap-2 items-center text-sm">
           <label className="flex items-center gap-1">Desde <input type="date" className="border rounded-lg px-2 py-1" value={reportFilter.from} onChange={(e) => setReportFilter((f) => ({ ...f, from: e.target.value }))} /></label>
           <label className="flex items-center gap-1">Hasta <input type="date" className="border rounded-lg px-2 py-1" value={reportFilter.to} onChange={(e) => setReportFilter((f) => ({ ...f, to: e.target.value }))} /></label>
@@ -743,12 +1024,14 @@ function ReportsCard({ branchState, selectedBranch, reportFilter, setReportFilte
           <button className="px-3 py-1.5 rounded-xl bg-white border shadow-sm" onClick={() => exportReportCSV(branchState, reportData, reportFilter, selectedBranch?.name)}>Exportar CSV</button>
         </div>
       </div>
+
       <div className="text-sm space-y-1">
         <div className="flex justify-between"><span>Tiempo facturado:</span><span>{reportData.totals.tiempo} min</span></div>
         <div className="flex justify-between"><span>Total productos (neto):</span><span>{bs(reportData.totals.productos)}</span></div>
         <div className="flex justify-between"><span>Margen total:</span><span>{bs(reportData.totals.margen)}</span></div>
         <div className="flex justify-between font-semibold"><span>Total cobrado:</span><span>{bs(reportData.totals.total)}</span></div>
       </div>
+
       <details className="mt-2" open>
         <summary className="text-sm text-neutral-600 cursor-pointer">Sesiones (detallado)</summary>
         <div className="mt-2 max-h-64 overflow-auto pr-1 space-y-1">
@@ -772,12 +1055,7 @@ function ReportsCard({ branchState, selectedBranch, reportFilter, setReportFilte
                 <div><b>Cerrado por:</b> {s.closedBy || "—"}</div>
               </div>
               <div className="mt-1 flex gap-2 justify-end">
-                <button
-                  className="px-2 py-1 text-xs rounded-lg bg-white border"
-                  onClick={() => openTicket(s, s.branchName || selectedBranch?.name)}
-                >
-                  Reimprimir
-                </button>
+                <button className="px-2 py-1 text-xs rounded-lg bg-white border" onClick={() => openTicket(s, s.branchName || selectedBranch?.name)}>Reimprimir</button>
               </div>
             </div>
           ))}
@@ -794,6 +1072,7 @@ function ReportsCard({ branchState, selectedBranch, reportFilter, setReportFilte
           ))}
         </div>
       </details>
+
       <details className="mt-2">
         <summary className="text-sm text-neutral-600 cursor-pointer">Por cajero</summary>
         <div className="mt-2 space-y-1 text-xs">
@@ -830,7 +1109,14 @@ function Ticket80mm({ data, config }) {
       <div className="mt-2">
         <div className="font-medium">Productos</div>
         {data.items.length === 0 ? (<div className="text-neutral-500">—</div>) : (
-          <div className="space-y-1">{data.items.map((it) => (<div key={it.itemId} className="flex justify-between"><span>{it.name} × {it.qty}{it.disc ? ` (desc ${bs(it.disc)})` : ''}</span><span>{bs(it.price * it.qty - (it.disc || 0))}</span></div>))}</div>
+          <div className="space-y-1">
+            {data.items.map((it) => (
+              <div key={it.itemId} className="flex justify-between">
+                <span>{it.name} × {it.qty}{it.disc ? ` (desc ${bs(it.disc)})` : ''}</span>
+                <span>{bs(it.price * it.qty - (it.disc || 0))}</span>
+              </div>
+            ))}
+          </div>
         )}
         <div className="flex justify-between mt-1"><span>Desc. mesa</span><span>{bs(data.discountMesa)}</span></div>
         <div className="flex justify-between mt-1"><span>Subtotal prod.</span><span>{bs(data.productosNeto)}</span></div>
@@ -867,7 +1153,9 @@ function LoginScreen({ onLogin, onInitAdmin }) {
 // ======= Helpers (CSV) =======
 function handleLogoUpload(e, setConfig) {
   const file = e.target.files?.[0]; if (!file) return;
-  const reader = new FileReader(); reader.onload = (ev) => setConfig((c) => ({ ...c, ticketLogo: String(ev.target?.result || '') })); reader.readAsDataURL(file);
+  const reader = new FileReader();
+  reader.onload = (ev) => setConfig((c) => ({ ...c, ticketLogo: String(ev.target?.result || '') }));
+  reader.readAsDataURL(file);
 }
 
 function exportReportCSV(branchState, reportData, filter, branchName) {
