@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { deepClone } from './safeClone.js'
+import Modal from './ui/Modal.jsx'
+import ProductPicker from './ui/ProductPicker.jsx'
 
 /**
  * Control de Billar — v4 (Patch v1)
@@ -586,6 +588,7 @@ function MesaCard({ table, config, onStart, onStop, onRename, inventory, onAddIt
   const isPaused = table?.session?.isPaused
   const pausedAt = table?.session?.pausedAt
   const [t, setT] = useState(0)
+  const [showPicker, setShowPicker] = useState(false)
   useEffect(() => { const i = setInterval(() => setT(Date.now()), 1000); return () => clearInterval(i) }, [])
   const tarifa = useMemo(() => { if (!table.session) return null; const extraPause = isPaused ? (Date.now() - (pausedAt || Date.now())) : 0; return computeCharge({ start: start, end: Date.now(), ratePerHour: config.ratePerHour, minMinutes: config.minMinutes, fractionMinutes: config.fractionMinutes, pausedMs: (pausedMs || 0) + extraPause }); }, [table.session, config, t]);
   return (
@@ -622,11 +625,12 @@ function MesaCard({ table, config, onStart, onStop, onRename, inventory, onAddIt
               <div className="font-medium mb-1">Cliente</div>
               <input className="w-full border rounded-lg px-2 py-1 text-sm mb-2" placeholder="Nombre del cliente (opcional)" value={table.session.customerName} onChange={(e) => onCustomerChange(e.target.value)} />
               <div className="font-medium mb-1">Productos</div>
-              <div className="flex flex-wrap gap-1 mb-1 max-h-24 overflow-auto pr-1">
-                {inventory.map((it) => (
-                  <button key={it.id} disabled={it.stock <= 0} title={it.stock <= 0 ? "Sin stock" : `Agregar ${it.name}`} className={`px-2 py-1 text-xs rounded-lg border ${it.stock <= 0 ? "opacity-50" : "bg-white hover:bg-neutral-50"}`} onClick={() => onAddItem(it.id)}>{it.name}</button>
-                ))}
-              </div>
+             <button
+              className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm"
+              onClick={() => setShowPicker(true)}
+              >
+              + Producto
+              </button>
               <div className="space-y-1 max-h-28 overflow-auto pr-1">
                 {table.session.items.length === 0 && <div className="text-xs text-neutral-500">Sin productos</div>}
                 {table.session.items.map((it) => (
@@ -647,6 +651,19 @@ function MesaCard({ table, config, onStart, onStop, onRename, inventory, onAddIt
           <div className="flex justify-end gap-2">
             <button className="px-3 py-1.5 rounded-xl bg-white border shadow-sm text-sm" onClick={() => onStop(false)}>Cerrar (sin imprimir)</button>
             <button className="px-3 py-1.5 rounded-xl bg-rose-600 text-white text-sm" onClick={() => onStop(true)}>Cerrar & imprimir</button>
+            {showPicker && (
+  <Modal title="Agregar consumo" onClose={() => setShowPicker(false)}>
+    <ProductPicker
+      inventory={inventory}
+      onPick={(it) => { onAddItem(it.id); }}
+    />
+    <div className="mt-3 flex justify-end gap-2">
+      <button className="px-3 py-1.5 rounded-lg border" onClick={() => setShowPicker(false)}>
+        Cerrar
+      </button>
+    </div>
+  </Modal>
+)}
           </div>
         </div>
       )}
