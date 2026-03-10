@@ -17,3 +17,6 @@
     "@vitejs/plugin-react": "^4.2.0"
   }
 }
+"engines": {
+  "node": "20.x"
+}
