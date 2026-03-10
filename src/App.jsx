@@ -504,6 +504,75 @@ export default function App() {
       />
     );
   }
+  // === Mini-ventanas: mostrar SOLO una sección cuando viene ?mini=config ===
+const params = new URLSearchParams(window.location.search);
+const mini = params.get('mini'); // 'config' (por ahora solo configuracion)
+
+if (mini === 'config' && authUser) {
+  const miniShell = (children, title) => (
+    <div className="min-h-screen bg-neutral-50 p-3">
+      <header className="sticky top-0 z-10 bg-white/85 backdrop-blur shadow-sm mb-3">
+        <div className="max-w-4xl mx-auto p-3 flex items-center justify-between">
+          <h1 className="text-lg font-semibold">{title}</h1>
+          <div className="text-xs text-neutral-600">
+            {authUser.username} ({authUser.role})
+          </div>
+        </div>
+      </header>
+      <main className="max-w-4xl mx-auto">{children}</main>
+    </div>
+  );
+
+  // CONTENIDO REAL DE CONFIGURACIÓN
+  return miniShell(
+    <div className="bg-white rounded-2xl shadow-sm border p-4">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="font-semibold">Configuración</h3>
+      </div>
+
+      <div className="grid grid-cols-1 gap-2 text-sm">
+        <label className="flex items-center justify-between gap-2">
+          <span>Impresión directa (agente ESC/POS)</span>
+          <input
+            type="checkbox"
+            checked={config.agentPrintEnabled}
+            onChange={(e) => setConfig((c) => ({ ...c, agentPrintEnabled: e.target.checked }))}
+          />
+        </label>
+
+        <label className="flex items-center justify-between gap-2">
+          <span>PIN de supervisor</span>
+          <input
+            type="password"
+            className="border rounded-lg px-2 py-1"
+            value={config.supervisorPin}
+            onChange={(e) => setConfig((c) => ({ ...c, supervisorPin: e.target.value }))}
+          />
+        </label>
+
+        <label className="flex flex-col">
+          <span>Encabezado de ticket</span>
+          <input
+            className="border rounded-lg px-2 py-1"
+            value={config.ticketHeader}
+            onChange={(e) => setConfig((c) => ({ ...c, ticketHeader: e.target.value }))}
+            placeholder="Ej.: BILLAR JADE — Sucursal Centro"
+          />
+        </label>
+
+        <label className="flex flex-col">
+          <span>Logo del ticket (PNG/JPG)</span>
+          <input type="file" accept="image/*" onChange={(e) => handleLogoUpload(e, setConfig)} />
+        </label>
+
+        {config.ticketLogo && (
+          <img src={config.ticketLogo} alt="Logo" className="h-16 object-contain border rounded p-1" />
+        )}
+      </div>
+    </div>,
+    'Configuración'
+  );
+}
 // Detectar modo 'mini' (solo una tarjeta en la ventana emergente)
 const params = new URLSearchParams(window.location.search);
 const mini = params.get('mini'); // 'inventory' | 'reports' | 'config' | 'users'
