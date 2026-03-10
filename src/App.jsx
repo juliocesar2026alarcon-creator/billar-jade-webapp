@@ -549,103 +549,23 @@ if (mini && authUser) {
     );
   }
 
- if (mini === 'config') {
-  return miniShell(
-    <div className="bg-white rounded-2xl shadow-sm border p-4">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="font-semibold">Configuración</h3>
-      </div>
-
-      <div className="grid grid-cols-1 gap-2 text-sm">
-        <label className="flex items-center justify-between gap-2">
-          <span>Impresión directa (agente ESC/POS)</span>
-          <input
-            type="checkbox"
-            checked={config.agentPrintEnabled}
-            onChange={(e) => setConfig((c) => ({ ...c, agentPrintEnabled: e.target.checked }))}
-          />
-        </label>
-
-        <label className="flex items-center justify-between gap-2">
-          <span>PIN de supervisor</span>
-          <input
-            type="password"
-            className="border rounded-lg px-2 py-1"
-            value={config.supervisorPin}
-            onChange={(e) => setConfig((c) => ({ ...c, supervisorPin: e.target.value }))}
-          />
-        </label>
-
-        <label className="flex flex-col">
-          <span>Encabezado de ticket</span>
-          <input
-            className="border rounded-lg px-2 py-1"
-            value={config.ticketHeader}
-            onChange={(e) => setConfig((c) => ({ ...c, ticketHeader: e.target.value }))}
-            placeholder="Ej.: BILLAR JADE — Sucursal Centro"
-          />
-        </label>
-
-        <label className="flex flex-col">
-          <span>Logo del ticket (PNG/JPG)</span>
-          <input type="file" accept="image/*" onChange={(e) => handleLogoUpload(e, setConfig)} />
-        </label>
-
-        {config.ticketLogo && (
-          <img src={config.ticketLogo} alt="Logo" className="h-16 object-contain border rounded p-1" />
-        )}
-      </div>
-    </div>,
-    'Configuración'
-  );
-}
-
-if (mini === 'users') {
-  if (authUser.role !== 'Administrador') {
-    return miniShell(<div className="text-sm">Solo el Administrador puede gestionar usuarios.</div>, 'Usuarios');
+  if (mini === 'config') {
+    return miniShell(
+      <div className="bg-white rounded-2xl shadow-sm border p-4">
+        ...
+      </div>,
+      'Configuración'
+    );
   }
 
-  return miniShell(
-    <div className="bg-white rounded-2xl shadow-sm border p-4">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="font-semibold">Usuarios</h3>
-        <button
-          className="px-2 py-1 text-xs rounded-lg bg-sky-50 text-sky-700 border"
-          onClick={createUser}
-        >
-          + Usuario
-        </button>
-      </div>
-
-      <div className="space-y-1 max-h-[70vh] overflow-auto pr-1 text-sm">
-        {(users || []).map((u) => (
-          <div key={u.id} className="grid grid-cols-12 gap-2 items-center border rounded-xl p-2">
-            <div className="col-span-3">{u.username}</div>
-            <div className="col-span-2">{u.role}</div>
-            <div className="col-span-3">
-              Sucursal: {branches.find((b) => b.id === u.branchId)?.name || u.branchId}
-            </div>
-            <div className="col-span-2">{u.active ? 'Activo' : 'Inactivo'}</div>
-            <div className="col-span-2 flex gap-1 justify-end">
-              <button
-                className="px-2 py-1 text-xs rounded-lg bg-white border"
-                onClick={() => changePassword(u)}
-              >
-                Cambiar clave
-              </button>
-              <button
-                className="px-2 py-1 text-xs rounded-lg bg-white border"
-                onClick={() => toggleUser(u)}
-              >
-                {u.active ? 'Desactivar' : 'Activar'}
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>,
-    'Usuarios'
-  );
+  if (mini === 'users') {
+    return miniShell(
+      <div className="bg-white rounded-2xl shadow-sm border p-4">
+        ...
+      </div>,
+      'Usuarios'
+    );
+  }
 }
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900">
