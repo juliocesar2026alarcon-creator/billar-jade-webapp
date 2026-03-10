@@ -1,18 +1,99 @@
+
 <!doctype html>
 <html lang="es">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Billar Jade</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Control de Billar — Billar Jade</title>
+    <!-- Tailwind por CDN (simple). Si luego quieres, lo pasamos a build de Tailwind CLI. -->
+    <script src="https://cdn.tailwindcss.com"></script>
+<style>
+  /* === Solo aplica dentro de la tarjeta de cada mesa (no toca el panel derecho) === */
+  .rounded-2xl.border.shadow-sm.p-3 {
+    min-height: 240px;                /* altura mínima prolija */
+  }
 
-    <!-- Cargar Tailwind correctamente -->
-    https://cdn.tailwindcss.com
+  /* === Rejilla interna de la mesa ocupada (ESCRITORIO) ===
+     2 columnas estables: izquierda 62% (tiempo/tarifa/acciones) y derecha 38% (cliente/productos) */
+  .rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-2 {
+    display: grid !important;
+    grid-template-columns: 62% 38%;
+    gap: 10px;
+    align-items: start;               /* anclar arriba */
+  }
+
+  /* Ambas columnas permiten encoger su contenido (clave p/evitar empujes) */
+  .rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-2 > * {
+    min-width: 0;
+  }
+
+  /* La columna derecha no deja que nada se “derrame” hacia afuera */
+  .rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-2 > :nth-child(2) {
+    overflow: hidden;
+  }
+
+  /* Cuadros internos blancos: apilar elementos en columna con pequeño espacio vertical */
+  .rounded-2xl.border.shadow-sm.p-3 .bg-white.rounded-xl.p-2.border {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  /* Filas informativas (Inicio/Cronómetro/…) más legibles */
+  .rounded-2xl.border.shadow-sm.p-3 .flex.justify-between {
+    line-height: 1.35;
+  }
+
+  /* Acciones (Pausar/Retomar, Mover, Desc. mesa): permitir salto y espaciar */
+  .rounded-2xl.border.shadow-sm.p-3 .flex.gap-2 {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* === Lista de productos (grid 12 columnas) ===
+     Permitir encoger celdas y truncar nombres largos sin romper layout */
+  .rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-12 > * {
+    min-width: 0;
+  }
+  .rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-12 .truncate {
+    min-width: 0;
+  }
+
+  /* Los dos botones de acciones del ítem (col-span-3, “-” y “Desc”) a la par, sin sobreponerse */
+  .rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-12 .col-span-3.flex {
+    flex-wrap: nowrap;                /* no apilar: van uno al lado del otro */
+    gap: 6px;
+  }
+  .rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-12 .col-span-3.flex > button {
+    flex: 0 0 auto;                   /* no estirar */
+    white-space: nowrap;              /* no cortar el texto */
+    padding: 2px 8px;                 /* un poco menos de padding para que entren cómodo */
+    line-height: 1.2;
+    box-sizing: border-box;
+  }
+
+  /* Scroll interno de la lista de productos (no estira la tarjeta) */
+  .rounded-2xl.border.shadow-sm.p-3 .max-h-24,
+  .rounded-2xl.border.shadow-sm.p-3 .max-h-28 {
+    overflow: auto;
+    max-height: 9.5rem;               /* ~152px */
+    padding-right: .25rem;            /* margen para que el scroll no tape texto */
+  }
+
+  /* === MÓVIL (<= 640px): apilar columnas y permitir botones a ancho completo si hace falta === */
+  @media (max-width: 640px) {
+    .rounded-2xl.border.shadow-sm.p-3 .grid.grid-cols-2 {
+      grid-template-columns: 1fr;     /* apila izquierda y derecha */
+      gap: 8px;
+    }
+    .rounded-2xl.border.shadow-sm.p-3 .px-2.py-1.rounded-lg {
+      width: 100%;
+    }
+  }
+</style>
   </head>
-
-  <body class="bg-neutral-50 text-neutral-900">
+  <body class="bg-neutral-50">
     <div id="root"></div>
-
-    <!-- Cargar React/Vite -->
-    /src/main.jsx</script>
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
