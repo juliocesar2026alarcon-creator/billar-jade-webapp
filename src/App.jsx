@@ -664,10 +664,7 @@ function MesaCard({ table, config, onStart, onStop, onRename, inventory, onAddIt
     </div>
   </Modal>
 )}
-          </div>
-        </div>
-      )}
-    </div>
+   </div>
   );
 }
 
@@ -733,24 +730,12 @@ function ReportsCard({ branchState, selectedBranch, reportFilter, setReportFilte
   return (
     <div className="bg-white rounded-2xl shadow-sm border p-4">
       <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Reportes</h3>
-        <div className="flex flex-wrap gap-2 items-center text-sm">
-          <label className="flex items-center gap-1">Desde <input type="date" className="border rounded-lg px-2 py-1" value={reportFilter.from} onChange={(e) => setReportFilter((f) => ({ ...f, from: e.target.value }))} /></label>
-          <label className="flex items-center gap-1">Hasta <input type="date" className="border rounded-lg px-2 py-1" value={reportFilter.to} onChange={(e) => setReportFilter((f) => ({ ...f, to: e.target.value }))} /></label>
-          <select className="border rounded-lg px-2 py-1" value={reportFilter.cashier} onChange={(e) => setReportFilter((f) => ({ ...f, cashier: e.target.value }))}>
-            <option value="">Cajero (todos)</option>
-            {Array.from(new Set(branchState.sessions.map((s) => s.closedBy))).filter(Boolean).map((c) => <option key={c}>{c}</option>)}
-          </select>
-          <select className="border rounded-lg px-2 py-1" value={reportFilter.table} onChange={(e) => setReportFilter((f) => ({ ...f, table: e.target.value }))}>
-            <option value="">Mesa (todas)</option>
-            {Array.from(new Set(branchState.sessions.map((s) => s.tableName))).map((c) => <option key={c}>{c}</option>)}
-          </select>
-          <select className="border rounded-lg px-2 py-1" value={reportFilter.product} onChange={(e) => setReportFilter((f) => ({ ...f, product: e.target.value }))}>
-            <option value="">Producto (todos)</option>
-            {Array.from(new Set(branchState.sessions.flatMap((s) => s.items.map((i) => i.name)))).map((p) => <option key={p}>{p}</option>)}
-          </select>
-          <button className="px-3 py-1.5 rounded-xl bg-white border shadow-sm" onClick={() => exportReportCSV(branchState, reportData, reportFilter, selectedBranch?.name)}>Exportar CSV</button>
-        </div>
-      </div>
+        <button
+  className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm"
+  onClick={() => setShowPicker(true)}
+>
+  + Producto
+</button>
       <div className="text-sm space-y-1">
         <div className="flex justify-between"><span>Tiempo facturado:</span><span>{reportData.totals.tiempo} min</span></div>
         <div className="flex justify-between"><span>Total productos (neto):</span><span>{bs(reportData.totals.productos)}</span></div>
