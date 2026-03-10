@@ -4,12 +4,10 @@ import Modal from './ui/Modal.jsx'
 import ProductPicker from './ui/ProductPicker.jsx'
 
 /**
- * Control de Billar — v4 (Patch v1)
- *
- * Parchea:
- * - Clonado seguro (evita problemas de structuredClone y estados no serializables)
- * - Fallbacks para estados iniciales
- * - ErrorBoundary en el root para evitar pantallas en blanco si algo falla
+ * Control de Billar — App.jsx (versión con selector de productos en modal)
+ * - Mantiene lógica de mesas, inventario, caja, reportes y ticket.
+ * - Corrige orden de hooks y usar `cur.movements` en cerrarCaja().
+ * - Reemplaza los botones sueltos de productos por un botón “+ Producto” con modal.
  */
 
 // ======= Utilidades =======
@@ -32,7 +30,7 @@ function computeCharge({ start, end, ratePerHour, minMinutes, fractionMinutes, p
 
 function uid(prefix = "id") { return `${prefix}_${Math.random().toString(36).slice(2, 9)}`; }
 function toCSV(rows) { const escape = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`; return rows.map((r) => r.map(escape).join(",")).join("\n"); }
-// Redondeo: dec < 0.49 → piso; dec >= 0.50 → techo
+// Regla redondeo total: <0.49 piso; >=0.50 techo
 function roundBs(amount) {
   const n = Number(amount || 0);
   const dec = n - Math.floor(n);
@@ -56,13 +54,12 @@ const defaultConfig = {
   minMinutes: 30,
   currency: "Bs",
   tablesPerBranch: 10,
-  roundingEnabled: true, // aplicar regla al TOTAL
+  roundingEnabled: true,
   ticketHeader: "",
-  ticketLogo: "", // dataURL
+  ticketLogo: "",
   agentPrintEnabled: false,
   supervisorPin: "4321",
 };
-
 
 // ======= Persistencia local =======
 const LS_KEY = "billiards_app_state_v4";
@@ -94,7 +91,7 @@ export default function App() {
   const [selectedBranchId, setSelectedBranchId] = useState(() => authUser?.role === 'Cajero' ? (authUser.branchId || defaultBranches[0].id) : defaultBranches[0].id);
   const [config, setConfig] = useState(defaultConfig);
   const [byBranch, setByBranch] = useState(() => {
-    const init = {}; 
+    const init = {};
     for (const b of defaultBranches) {
       init[b.id] = {
         tables: makeDefaultTables(defaultConfig.tablesPerBranch),
@@ -118,7 +115,7 @@ export default function App() {
         if (stored.byBranch) setByBranch(stored.byBranch);
       } catch(e){ console.warn('Estado previo no válido, se ignora.') }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => { saveState({ authUser, branches, selectedBranchId, config, byBranch }); }, [authUser, branches, selectedBranchId, config, byBranch]);
@@ -164,7 +161,6 @@ export default function App() {
       return copy;
     });
   };
-
 
   // ======= Mesas =======
   const startTable = (tableId) => {
@@ -302,13 +298,12 @@ export default function App() {
   const abrirCaja = (initialCash) => { updateByBranch((copy) => { const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState)); if (st.cash.currentShift) return copy; st.cash.currentShift = { id: uid("turno"), openedAt: nowTs(), openedBy: authUser?.username || "", initialCash: Number(initialCash) || 0, movements: [] }; return copy; }); };
   const movimientoCaja = (type, concept, amount) => { updateByBranch((copy) => { const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState)); if (!st.cash.currentShift) return copy; st.cash.currentShift.movements.push({ id: uid("mov"), type, at: nowTs(), concept, amount: Number(amount) || 0, by: authUser?.username || "" }); return copy; }); };
   const cerrarCaja = () => { updateByBranch((copy) => { const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState)); if (!st.cash.currentShift) return copy; const cur = st.cash.currentShift; cur.closedAt = nowTs(); cur.closedBy = authUser?.username || "";
-    const ingresos = turno.movements
-     .filter((m) => m.type === "venta" || m.type === "ingreso")
-     .reduce((a, m) => a + m.amount, 0);
-
-    const egresos = turno.movements
-     .filter((m) => m.type === "egreso")
-     .reduce((a, m) => a + m.amount, 0);
+    const ingresos = cur.movements
+      .filter((m) => m.type === "venta" || m.type === "ingreso")
+      .reduce((a, m) => a + m.amount, 0);
+    const egresos = cur.movements
+      .filter((m) => m.type === "egreso")
+      .reduce((a, m) => a + m.amount, 0);
     const totalCaja = cur.initialCash + ingresos - egresos;
     const ventas = cur.movements.filter((m) => m.type === "venta");
     const cierre = { id: uid("cierre"), branchId: selectedBranchId, branchName: selectedBranch?.name || "", openedAt: cur.openedAt, closedAt: cur.closedAt, openedBy: cur.openedBy, closedBy: cur.closedBy, initialCash: cur.initialCash, ingresos, egresos, totalCaja, ventasCount: ventas.length, ventasTotal: ventas.reduce((a, m) => a + m.amount, 0) };
@@ -389,12 +384,11 @@ export default function App() {
   };
   const toggleUser = (u) => { setUsers((prev) => (prev || []).map((x) => x.id === u.id ? { ...x, active: !x.active } : x)); };
 
-const canEditTariff = authUser?.role === "Administrador";
-const isCajero = authUser?.role === 'Cajero';
-useEffect(() => { 
-  if (isCajero && authUser?.branchId) setSelectedBranchId(authUser.branchId);
-}, [isCajero, authUser]);
-  
+  // ======= Hooks dependientes del auth (colocar antes del Gate) =======
+  const canEditTariff = authUser?.role === "Administrador";
+  const isCajero = authUser?.role === 'Cajero';
+  useEffect(() => { if (isCajero && authUser?.branchId) setSelectedBranchId(authUser.branchId); }, [isCajero, authUser]);
+
   // Gate de Login
   if (!authUser) {
     return (
@@ -409,7 +403,6 @@ useEffect(() => {
     );
   }
 
-  
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900">
       {/* Top bar */}
@@ -440,6 +433,7 @@ useEffect(() => {
               <button onClick={() => updateByBranch((prev) => { const copy = deepClone(prev); (copy[selectedBranchId] ||= deepClone(branchState)).tables.push({ id: uid("mesa"), name: `Mesa ${(copy[selectedBranchId].tables.length) + 1}`, status: 'libre', session: null }); return copy; })} className="px-3 py-1.5 rounded-xl bg-white border shadow-sm text-sm hover:bg-neutral-50">+ Mesa</button>
             </div>
           </div>
+          {/* Reja de mesas estándar (sin CSS extra) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
             {(branchState.tables || []).map((t) => (
               <MesaCard key={t.id} table={t} config={config}
@@ -535,7 +529,6 @@ useEffect(() => {
             </div>
           </div>
 
-
           {/* Usuarios (solo admin) */}
           {authUser.role === 'Administrador' && (
             <div className="bg-white rounded-2xl shadow-sm border p-4">
@@ -625,12 +618,11 @@ function MesaCard({ table, config, onStart, onStop, onRename, inventory, onAddIt
               <div className="font-medium mb-1">Cliente</div>
               <input className="w-full border rounded-lg px-2 py-1 text-sm mb-2" placeholder="Nombre del cliente (opcional)" value={table.session.customerName} onChange={(e) => onCustomerChange(e.target.value)} />
               <div className="font-medium mb-1">Productos</div>
-             <button
-              className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm"
-              onClick={() => setShowPicker(true)}
-              >
-              + Producto
-              </button>
+
+              {/* Botón único para abrir modal */}
+              <button className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm mb-2" onClick={() => setShowPicker(true)}>+ Producto</button>
+
+              {/* Lista de items actuales */}
               <div className="space-y-1 max-h-28 overflow-auto pr-1">
                 {table.session.items.length === 0 && <div className="text-xs text-neutral-500">Sin productos</div>}
                 {table.session.items.map((it) => (
@@ -651,20 +643,23 @@ function MesaCard({ table, config, onStart, onStop, onRename, inventory, onAddIt
           <div className="flex justify-end gap-2">
             <button className="px-3 py-1.5 rounded-xl bg-white border shadow-sm text-sm" onClick={() => onStop(false)}>Cerrar (sin imprimir)</button>
             <button className="px-3 py-1.5 rounded-xl bg-rose-600 text-white text-sm" onClick={() => onStop(true)}>Cerrar & imprimir</button>
-            {showPicker && (
-  <Modal title="Agregar consumo" onClose={() => setShowPicker(false)}>
-    <ProductPicker
-      inventory={inventory}
-      onPick={(it) => { onAddItem(it.id); }}
-    />
-    <div className="mt-3 flex justify-end gap-2">
-      <button className="px-3 py-1.5 rounded-lg border" onClick={() => setShowPicker(false)}>
-        Cerrar
-      </button>
+          </div>
+
+          {/* Modal para agregar consumo */}
+          {showPicker && (
+            <Modal title="Agregar consumo" onClose={() => setShowPicker(false)}>
+              <ProductPicker
+                inventory={inventory}
+                onPick={(it) => { onAddItem(it.id); }}
+              />
+              <div className="mt-3 flex justify-end gap-2">
+                <button className="px-3 py-1.5 rounded-lg border" onClick={() => setShowPicker(false)}>Cerrar</button>
+              </div>
+            </Modal>
+          )}
+        </div>
+      )}
     </div>
-  </Modal>
-)}
-   </div>
   );
 }
 
@@ -730,12 +725,24 @@ function ReportsCard({ branchState, selectedBranch, reportFilter, setReportFilte
   return (
     <div className="bg-white rounded-2xl shadow-sm border p-4">
       <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Reportes</h3>
-        <button
-  className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm"
-  onClick={() => setShowPicker(true)}
->
-  + Producto
-</button>
+        <div className="flex flex-wrap gap-2 items-center text-sm">
+          <label className="flex items-center gap-1">Desde <input type="date" className="border rounded-lg px-2 py-1" value={reportFilter.from} onChange={(e) => setReportFilter((f) => ({ ...f, from: e.target.value }))} /></label>
+          <label className="flex items-center gap-1">Hasta <input type="date" className="border rounded-lg px-2 py-1" value={reportFilter.to} onChange={(e) => setReportFilter((f) => ({ ...f, to: e.target.value }))} /></label>
+          <select className="border rounded-lg px-2 py-1" value={reportFilter.cashier} onChange={(e) => setReportFilter((f) => ({ ...f, cashier: e.target.value }))}>
+            <option value="">Cajero (todos)</option>
+            {Array.from(new Set(branchState.sessions.map((s) => s.closedBy))).filter(Boolean).map((c) => <option key={c}>{c}</option>)}
+          </select>
+          <select className="border rounded-lg px-2 py-1" value={reportFilter.table} onChange={(e) => setReportFilter((f) => ({ ...f, table: e.target.value }))}>
+            <option value="">Mesa (todas)</option>
+            {Array.from(new Set(branchState.sessions.map((s) => s.tableName))).map((c) => <option key={c}>{c}</option>)}
+          </select>
+          <select className="border rounded-lg px-2 py-1" value={reportFilter.product} onChange={(e) => setReportFilter((f) => ({ ...f, product: e.target.value }))}>
+            <option value="">Producto (todos)</option>
+            {Array.from(new Set(branchState.sessions.flatMap((s) => s.items.map((i) => i.name)))).map((p) => <option key={p}>{p}</option>)}
+          </select>
+          <button className="px-3 py-1.5 rounded-xl bg-white border shadow-sm" onClick={() => exportReportCSV(branchState, reportData, reportFilter, selectedBranch?.name)}>Exportar CSV</button>
+        </div>
+      </div>
       <div className="text-sm space-y-1">
         <div className="flex justify-between"><span>Tiempo facturado:</span><span>{reportData.totals.tiempo} min</span></div>
         <div className="flex justify-between"><span>Total productos (neto):</span><span>{bs(reportData.totals.productos)}</span></div>
@@ -771,7 +778,6 @@ function ReportsCard({ branchState, selectedBranch, reportFilter, setReportFilte
                 >
                   Reimprimir
                 </button>
-                {/* Editar/Borrar: opcional agregar aquí si lo necesitas */}
               </div>
             </div>
           ))}
@@ -794,7 +800,6 @@ function ReportsCard({ branchState, selectedBranch, reportFilter, setReportFilte
           {reportData.byCashier.map((c) => (<div key={c.cajero} className="flex justify-between border rounded-lg p-2"><span>{c.cajero}</span><b>{bs(c.ventas)}</b></div>))}
         </div>
       </details>
-
 
       <details className="mt-2">
         <summary className="text-sm text-neutral-600 cursor-pointer">Por mesa</summary>
@@ -859,7 +864,7 @@ function LoginScreen({ onLogin, onInitAdmin }) {
   );
 }
 
-// ======= Helpers =======
+// ======= Helpers (CSV) =======
 function handleLogoUpload(e, setConfig) {
   const file = e.target.files?.[0]; if (!file) return;
   const reader = new FileReader(); reader.onload = (ev) => setConfig((c) => ({ ...c, ticketLogo: String(ev.target?.result || '') })); reader.readAsDataURL(file);
@@ -876,4 +881,22 @@ function exportReportCSV(branchState, reportData, filter, branchName) {
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob); const a = document.createElement("a");
   a.href = url; a.download = `reporte_${filter.from}_a_${filter.to}_${branchName || ''}.csv`; a.click(); URL.revokeObjectURL(url);
+}
+
+function exportClosureCSV(c) {
+  const header = ["Sucursal","Apertura","Cierre","Abrió","Cerró","Inicial","Ingresos","Egresos","Total caja","Ventas (cant)","Ventas (Bs)"];
+  const row = [
+    c.branchName || "",
+    new Date(c.openedAt).toLocaleString(),
+    new Date(c.closedAt).toLocaleString(),
+    c.openedBy || "",
+    c.closedBy || "",
+    to2(c.initialCash), to2(c.ingresos), to2(c.egresos), to2(c.totalCaja),
+    c.ventasCount || 0, to2(c.ventasTotal || 0)
+  ];
+  const csv = toCSV([header, row]);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob); const a = document.createElement("a");
+  a.href = url; a.download = `cierre_${(c.closedAt && new Date(c.closedAt).toISOString().slice(0,19).replace(/[:T]/g,'-')) || 'turno'}.csv`;
+  a.click(); URL.revokeObjectURL(url);
 }
