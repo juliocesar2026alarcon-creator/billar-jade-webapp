@@ -573,11 +573,11 @@ if (mini === 'config' && authUser) {
     'Configuración'
   );
 }
-// Detectar modo 'mini' (solo una tarjeta en la ventana emergente)
+// === Mini Configuración: mostrar SOLO Config cuando viene ?mini=config ===
 const params = new URLSearchParams(window.location.search);
-const mini = params.get('mini'); // 'inventory' | 'reports' | 'config' | 'users'
+const mini = params.get('mini'); // SOLO usamos 'config' en este paso
 
-if (mini && authUser) {
+if (mini === 'config' && authUser) {
   const miniShell = (children, title) => (
     <div className="min-h-screen bg-neutral-50 p-3">
       <header className="sticky top-0 z-10 bg-white/85 backdrop-blur shadow-sm mb-3">
@@ -592,49 +592,54 @@ if (mini && authUser) {
     </div>
   );
 
-  if (mini === 'inventory') {
-    return miniShell(
-      <InventoryCard
-        branchState={branchState}
-        setByBranch={setByBranch}
-        selectedBranchId={selectedBranchId}
-        ingresoStock={ingresoStock}
-        egresoStockManual={egresoStockManual}
-      />,
-      'Inventario'
-    );
-  }
+  return miniShell(
+    <div className="bg-white rounded-2xl shadow-sm border p-4">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="font-semibold">Configuración</h3>
+      </div>
 
-  if (mini === 'reports') {
-    return miniShell(
-      <ReportsCard
-        branchState={branchState}
-        selectedBranch={selectedBranch}
-        reportFilter={reportFilter}
-        setReportFilter={setReportFilter}
-        reportData={reportData}
-      />,
-      'Reportes'
-    );
-  }
+      <div className="grid grid-cols-1 gap-2 text-sm">
+        <label className="flex items-center justify-between gap-2">
+          <span>Impresión directa (agente ESC/POS)</span>
+          <input
+            type="checkbox"
+            checked={config.agentPrintEnabled}
+            onChange={(e) => setConfig((c) => ({ ...c, agentPrintEnabled: e.target.checked }))}
+          />
+        </label>
 
-  if (mini === 'config') {
-    return miniShell(
-      <div className="bg-white rounded-2xl shadow-sm border p-4">
-        ...
-      </div>,
-      'Configuración'
-    );
-  }
+        <label className="flex items-center justify-between gap-2">
+          <span>PIN de supervisor</span>
+          <input
+            type="password"
+            className="border rounded-lg px-2 py-1"
+            value={config.supervisorPin}
+            onChange={(e) => setConfig((c) => ({ ...c, supervisorPin: e.target.value }))}
+          />
+        </label>
 
-  if (mini === 'users') {
-    return miniShell(
-      <div className="bg-white rounded-2xl shadow-sm border p-4">
-        ...
-      </div>,
-      'Usuarios'
-    );
-  }
+        <label className="flex flex-col">
+          <span>Encabezado de ticket</span>
+          <input
+            className="border rounded-lg px-2 py-1"
+            value={config.ticketHeader}
+            onChange={(e) => setConfig((c) => ({ ...c, ticketHeader: e.target.value }))}
+            placeholder="Ej.: BILLAR JADE — Sucursal Centro"
+          />
+        </label>
+
+        <label className="flex flex-col">
+          <span>Logo del ticket (PNG/JPG)</span>
+          <input type="file" accept="image/*" onChange={(e) => handleLogoUpload(e, setConfig)} />
+        </label>
+
+        {config.ticketLogo && (
+          <img src={config.ticketLogo} alt="Logo" className="h-16 object-contain border rounded p-1" />
+        )}
+      </div>
+    </div>,
+    'Configuración'
+  );
 }
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900">
