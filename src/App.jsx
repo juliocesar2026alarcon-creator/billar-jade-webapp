@@ -539,7 +539,7 @@ if (mini === 'config' && authUser) {
             onChange={(e) => setConfig((c) => ({ ...c, agentPrintEnabled: e.target.checked }))}
           />
         </label>
-
+  
         <label className="flex items-center justify-between gap-2">
           <span>PIN de supervisor</span>
           <input
