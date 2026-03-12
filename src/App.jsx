@@ -1,34 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { deepClone } from './safeClone.js';
-// --- Abre una ventana emergente con la misma app mostrando 1 sola sección (?mini=...) ---
-function openPopup(view) {
-  // arma la URL actual + ?mini=...
-  const url = new URL(window.location.href);
-  url.searchParams.set('mini', view);
 
-  // popup con nombre por vista (reutiliza la misma ventana si ya está abierta)
-  const features = [
-    'width=980',
-    'height=720',
-    'menubar=no',
-    'toolbar=no',
-    'location=no',
-    'status=no',
-    'resizable=yes',
-    'scrollbars=yes'
-  ].join(',');
-
-  window.open(url.toString(), `mini-${view}`, features);
-}
 /**
- * Control de Billar — App.jsx (versión con botón “+ Producto” y modal integrado)
- *
- * - Mantiene lógica de mesas, inventario, caja, reportes y ticket.
- * - Corrige: ordenar hooks, usar `cur.movements` en cerrarCaja(), y JSX balanceado.
- * - Reemplaza botones sueltos de productos por un botón “+ Producto” que abre un Modal (incluido abajo).
+ * Control de Billar — App.jsx
+ * - Botón “+ Producto” con modal para agregar consumos por mesa.
+ * - Panel derecho con 4 accesos que abren MODALES: Inventario / Reportes / Configuración / Usuarios.
+ * - Reimprimir ticket en Reportes.
  */
 
-// ======= Utilidades =======
+/* =============================
+   Utilidades y helpers generales
+   ============================= */
 const bs = (n) => `Bs ${Number(n || 0).toFixed(2)}`;
 const to2 = (n) => Number(n || 0).toFixed(2);
 const fmtTime = (d) => new Date(d).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -48,23 +30,23 @@ function computeCharge({ start, end, ratePerHour, minMinutes, fractionMinutes, p
 
 function uid(prefix = "id") { return `${prefix}_${Math.random().toString(36).slice(2, 9)}`; }
 function toCSV(rows) { const escape = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`; return rows.map((r) => r.map(escape).join(",")).join("\n"); }
-// Regla redondeo total: <0.49 piso; >=0.50 techo
-function roundBs(amount) {
-  const n = Number(amount || 0);
-  const dec = n - Math.floor(n);
+function roundBs(amount) { // redondeo 0.49/0.50
+  const n = Number(amount || 0); const dec = n - Math.floor(n);
   if (dec === 0) return Math.floor(n);
   if (dec < 0.49) return Math.floor(n);
   if (dec < 0.50) return Math.floor(n);
   return Math.ceil(n);
 }
 
-// ======= Datos iniciales =======
+/* =============================
+   Datos iniciales
+   ============================= */
 const defaultBranches = [ { id: "jade", name: "BILLAR JADE" }, { id: "anexo", name: "BILLAR JADE ANEXO" } ];
 function makeDefaultTables(n = 10) { return Array.from({ length: n }, (_, i) => ({ id: uid("mesa"), name: `Mesa ${i + 1}`, status: "libre", session: null })); }
 const defaultInventory = [
-  { id: uid("item"), name: "Tiza", stock: 50, price: 2.0, cost: 0.8, unit: "u" },
+  { id: uid("item"), name: "Tiza",   stock: 50, price: 2.0,  cost: 0.8, unit: "u"   },
   { id: uid("item"), name: "Bebida", stock: 40, price: 10.0, cost: 6.0, unit: "bot" },
-  { id: uid("item"), name: "Snack", stock: 30, price: 8.0, cost: 4.0, unit: "u" },
+  { id: uid("item"), name: "Snack",  stock: 30, price: 8.0,  cost: 4.0, unit: "u"   },
 ];
 const defaultConfig = {
   ratePerHour: 15,
@@ -79,7 +61,9 @@ const defaultConfig = {
   supervisorPin: "4321",
 };
 
-// ======= Persistencia local =======
+/* =============================
+   Persistencia local
+   ============================= */
 const LS_KEY = "billiards_app_state_v4";
 const AUTH_KEY = "billiards_app_auth_v4";
 const USERS_KEY = "billiards_app_users_v4";
@@ -92,11 +76,13 @@ function loadUsers() { try { const raw = localStorage.getItem(USERS_KEY); return
 function saveUsers(users) { try { localStorage.setItem(USERS_KEY, JSON.stringify(users)); } catch {} }
 
 const DEFAULT_USERS = [
-  { id: uid("usr"), username: "admin", password: "123456", role: "Administrador", branchId: "jade", active: true },
-  { id: uid("usr"), username: "cajero", password: "123456", role: "Cajero", branchId: "jade", active: true },
+  { id: uid("usr"), username: "admin",  password: "123456", role: "Administrador", branchId: "jade", active: true },
+  { id: uid("usr"), username: "cajero", password: "123456", role: "Cajero",       branchId: "jade", active: true },
 ];
 
-// ======= App principal =======
+/* =============================
+   App principal
+   ============================= */
 export default function App() {
   // Auth
   const [authUser, setAuthUser] = useState(() => loadAuth());
@@ -122,7 +108,7 @@ export default function App() {
     return init;
   });
 
-  // Cargar estado previo (si existe)
+  // Cargar estado si existe
   useEffect(() => {
     const stored = loadState();
     if (stored && typeof stored === 'object') {
@@ -136,8 +122,10 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Persistir
   useEffect(() => { saveState({ authUser, branches, selectedBranchId, config, byBranch }); }, [authUser, branches, selectedBranchId, config, byBranch]);
 
+  // Derivados
   const selectedBranch = branches.find((b) => b.id === selectedBranchId) || branches[0] || { id: 'jade', name: 'BILLAR JADE' };
   const branchState = byBranch[selectedBranchId] || { tables: [], inventory: [...defaultInventory], kardex: [], cash: { currentShift: null, shifts: [], closures: [] }, sessions: [] };
 
@@ -145,16 +133,16 @@ export default function App() {
   const [tick, setTick] = useState(nowTs());
   useEffect(() => { const t = setInterval(() => setTick(nowTs()), 1000); return () => clearInterval(t); }, []);
 
-  // ======= Helpers de actualización segura =======
+  // Mutación segura por sucursal
   const updateByBranch = (updater) => {
     setByBranch((prev) => {
       const base = deepClone(prev || {});
       const res = updater(base) || base;
       return res;
-    })
-  }
+    });
+  };
 
-  // ======= Inventario & Kardex =======
+  /* ===== Inventario / Kardex ===== */
   const pushKardex = (st, { itemId, name, type, qty, unitCost, ref }) => {
     st.kardex.push({ id: uid('kx'), itemId, name, at: nowTs(), type, qty, unitCost: Number(unitCost || 0), ref });
   };
@@ -180,7 +168,7 @@ export default function App() {
     });
   };
 
-  // ======= Mesas =======
+  /* ===== Mesas ===== */
   const startTable = (tableId) => {
     updateByBranch((copy) => {
       const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState));
@@ -283,43 +271,28 @@ export default function App() {
       const end = nowTs();
       const tarifa = computeCharge({
         start: t.session.start, end,
-        ratePerHour: config.ratePerHour,
-        minMinutes: config.minMinutes,
-        fractionMinutes: config.fractionMinutes,
-        pausedMs: t.session.pausedMs
+        ratePerHour: config.ratePerHour, minMinutes: config.minMinutes,
+        fractionMinutes: config.fractionMinutes, pausedMs: t.session.pausedMs
       });
       const productosBruto = t.session.items.reduce((acc, it) => acc + (it.price * it.qty), 0);
-      const productosDesc = t.session.items.reduce((acc, it) => acc + Math.min(it.disc || 0, it.price * it.qty), 0);
-      const productosNeto = Math.max(0, productosBruto - productosDesc);
+      const productosDesc  = t.session.items.reduce((acc, it) => acc + Math.min(it.disc || 0, it.price * it.qty), 0);
+      const productosNeto  = Math.max(0, productosBruto - productosDesc);
       const costoProductos = t.session.items.reduce((a, it) => a + (it.cost * it.qty), 0);
-      const subtotal = tarifa.amount + productosNeto;
+      const subtotal   = tarifa.amount + productosNeto;
       const totalBruto = subtotal - (t.session.discountTotal || 0);
       const totalCobrar = config.roundingEnabled ? roundBs(totalBruto) : totalBruto;
       const margin = (tarifa.amount + productosNeto) - costoProductos;
 
       const closed = {
-        id: t.session.id,
-        branchId: selectedBranchId,
-        branchName: selectedBranch?.name || "",
-        tableId: t.id,
-        tableName: t.name,
-        start: t.session.start,
-        end,
-        pausedMs: t.session.pausedMs,
-        tariff: tarifa,
-        items: t.session.items,
-        productosBruto: Number(to2(productosBruto)),
-        productosDesc: Number(to2(productosDesc)),
-        productosNeto: Number(to2(productosNeto)),
-        costoProductos: Number(to2(costoProductos)),
+        id: t.session.id, branchId: selectedBranchId, branchName: selectedBranch?.name || "",
+        tableId: t.id, tableName: t.name, start: t.session.start, end,
+        pausedMs: t.session.pausedMs, tariff: tarifa, items: t.session.items,
+        productosBruto: Number(to2(productosBruto)), productosDesc: Number(to2(productosDesc)),
+        productosNeto: Number(to2(productosNeto)),  costoProductos: Number(to2(costoProductos)),
         discountMesa: Number(to2(t.session.discountTotal || 0)),
-        totalRaw: Number(to2(totalBruto)),
-        total: Number(to2(totalCobrar)),
-        margin: Number(to2(margin)),
-        customerName: t.session.customerName || "",
-        openedBy: t.session.createdBy || "",
-        closedBy: authUser?.username || "",
-        roundingApplied: config.roundingEnabled,
+        totalRaw: Number(to2(totalBruto)), total: Number(to2(totalCobrar)), margin: Number(to2(margin)),
+        customerName: t.session.customerName || "", openedBy: t.session.createdBy || "",
+        closedBy: authUser?.username || "", roundingApplied: config.roundingEnabled,
       };
 
       st.sessions.push(closed);
@@ -336,7 +309,7 @@ export default function App() {
     });
   };
 
-  // ======= Caja =======
+  /* ===== Caja ===== */
   const abrirCaja = (initialCash) => {
     updateByBranch((copy) => {
       const st = copy[selectedBranchId] || (copy[selectedBranchId] = deepClone(branchState));
@@ -360,21 +333,15 @@ export default function App() {
       const cur = st.cash.currentShift;
       cur.closedAt = nowTs(); cur.closedBy = authUser?.username || "";
 
-      const ingresos = cur.movements
-        .filter((m) => m.type === "venta" || m.type === "ingreso")
-        .reduce((a, m) => a + m.amount, 0);
-      const egresos = cur.movements
-        .filter((m) => m.type === "egreso")
-        .reduce((a, m) => a + m.amount, 0);
+      const ingresos = cur.movements.filter((m) => m.type === "venta" || m.type === "ingreso").reduce((a, m) => a + m.amount, 0);
+      const egresos  = cur.movements.filter((m) => m.type === "egreso").reduce((a, m) => a + m.amount, 0);
       const totalCaja = cur.initialCash + ingresos - egresos;
       const ventas = cur.movements.filter((m) => m.type === "venta");
 
       const cierre = {
         id: uid("cierre"),
-        branchId: selectedBranchId,
-        branchName: selectedBranch?.name || "",
-        openedAt: cur.openedAt, closedAt: cur.closedAt,
-        openedBy: cur.openedBy, closedBy: cur.closedBy,
+        branchId: selectedBranchId, branchName: selectedBranch?.name || "",
+        openedAt: cur.openedAt, closedAt: cur.closedAt, openedBy: cur.openedBy, closedBy: cur.closedBy,
         initialCash: cur.initialCash, ingresos, egresos, totalCaja,
         ventasCount: ventas.length, ventasTotal: ventas.reduce((a, m) => a + m.amount, 0)
       };
@@ -387,12 +354,12 @@ export default function App() {
     const st = branchState; if (!st) return null;
     const turno = st.cash.currentShift; if (!turno) return null;
     const ingresos = turno.movements.filter((m) => m.type === "venta" || m.type === "ingreso").reduce((a, m) => a + m.amount, 0);
-    const egresos = turno.movements.filter((m) => m.type === "egreso").reduce((a, m) => a + m.amount, 0);
+    const egresos  = turno.movements.filter((m) => m.type === "egreso").reduce((a, m) => a + m.amount, 0);
     const totalCaja = turno.initialCash + ingresos - egresos;
     return { ingresos, egresos, totalCaja };
   }, [branchState]);
 
-  // ======= Ticket & Agente =======
+  /* ===== Ticket / agente impresión ===== */
   const [ticketData, setTicketData] = useState(null);
   function openTicket(data, branchName) {
     const withBranch = { ...data, branchName };
@@ -413,22 +380,22 @@ export default function App() {
     } catch (e) { throw e; }
   }
 
-  // ======= Reportes (rango y filtros) =======
+  /* ===== Reportes ===== */
   const [reportFilter, setReportFilter] = useState(() => ({ from: fmtISODate(Date.now()), to: fmtISODate(Date.now()), cashier: '', table: '', product: '' }));
   const reportData = useMemo(() => {
     const st = branchState; if (!st) return { sessions: [], totals: { tiempo: 0, productos: 0, total: 0, margen: 0 }, prodAgg: [], byCashier: [], byTable: [] };
     const from = new Date(`${reportFilter.from}T00:00:00`).getTime();
-    const to = new Date(`${reportFilter.to}T23:59:59`).getTime();
-    const sessions = st.sessions.filter((s) => s.end >= from && s.end <= to)
+    const to   = new Date(`${reportFilter.to}T23:59:59`).getTime();
+    const sessions = st.sessions
+      .filter((s) => s.end >= from && s.end <= to)
       .filter((s) => (reportFilter.cashier ? s.closedBy === reportFilter.cashier : true))
-      .filter((s) => (reportFilter.table ? s.tableName === reportFilter.table : true))
+      .filter((s) => (reportFilter.table   ? s.tableName === reportFilter.table   : true))
       .filter((s) => (reportFilter.product ? s.items.some((it) => it.name === reportFilter.product) : true));
-    const tiempo = sessions.reduce((a, s) => a + s.tariff.rounded, 0);
-    const productos = sessions.reduce((a, s) => a + s.productosNeto, 0);
-    const total = sessions.reduce((a, s) => a + s.total, 0);
-    const margen = sessions.reduce((a, s) => a + s.margin, 0);
+    const tiempo     = sessions.reduce((a, s) => a + s.tariff.rounded, 0);
+    const productos  = sessions.reduce((a, s) => a + s.productosNeto, 0);
+    const total      = sessions.reduce((a, s) => a + s.total, 0);
+    const margen     = sessions.reduce((a, s) => a + s.margin, 0);
 
-    // Agregado por producto
     const prodMap = new Map();
     for (const s of sessions) {
       for (const it of s.items) {
@@ -436,14 +403,13 @@ export default function App() {
         const agg = prodMap.get(key) || { name: key, qty: 0, venta: 0, costo: 0, margen: 0 };
         agg.qty += it.qty;
         agg.venta += (it.price * it.qty) - (it.disc || 0);
-        agg.costo += (it.cost * it.qty);
+        agg.costo += (it.cost  * it.qty);
         agg.margen += ((it.price * it.qty) - (it.disc || 0) - (it.cost * it.qty));
         prodMap.set(key, agg);
       }
     }
     const prodAgg = Array.from(prodMap.values());
 
-    // Por cajero
     const cashMap = new Map();
     for (const s of sessions) {
       const k = s.closedBy || '—';
@@ -453,7 +419,6 @@ export default function App() {
     }
     const byCashier = Array.from(cashMap.values());
 
-    // Por mesa
     const tbMap = new Map();
     for (const s of sessions) {
       const k = s.tableName;
@@ -466,7 +431,7 @@ export default function App() {
     return { sessions, totals: { tiempo, productos, total, margen }, prodAgg, byCashier, byTable };
   }, [branchState, reportFilter]);
 
-  // ======= Usuarios (admin) =======
+  /* ===== Usuarios ===== */
   const createUser = () => {
     const username = prompt('Usuario:'); if (!username) return;
     const password = prompt('Contraseña inicial:') || '123456';
@@ -482,10 +447,16 @@ export default function App() {
     setUsers((prev) => (prev || []).map((x) => x.id === u.id ? { ...x, active: !x.active } : x));
   };
 
-  // Hooks dependientes del auth (antes del Gate)
+  // Hooks dependientes del auth
   const canEditTariff = authUser?.role === "Administrador";
   const isCajero = authUser?.role === 'Cajero';
   useEffect(() => { if (isCajero && authUser?.branchId) setSelectedBranchId(authUser.branchId); }, [isCajero, authUser]);
+
+  // ======= Estados de MODALES (como tu captura) =======
+  const [showInventory, setShowInventory] = useState(false);
+  const [showReports, setShowReports] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
+  const [showUsers, setShowUsers] = useState(false);
 
   // Gate de Login
   if (!authUser) {
@@ -504,69 +475,10 @@ export default function App() {
       />
     );
   }
-// Detectar modo 'mini' (solo una tarjeta en la ventana emergente)
-const params = new URLSearchParams(window.location.search);
-const mini = params.get('mini'); // 'inventory' | 'reports' | 'config' | 'users'
 
-if (mini && authUser) {
-  const miniShell = (children, title) => (
-    <div className="min-h-screen bg-neutral-50 p-3">
-      <header className="sticky top-0 z-10 bg-white/85 backdrop-blur shadow-sm mb-3">
-        <div className="max-w-4xl mx-auto p-3 flex items-center justify-between">
-          <h1 className="text-lg font-semibold">{title}</h1>
-          <div className="text-xs text-neutral-600">
-            {authUser.username} ({authUser.role})
-          </div>
-        </div>
-      </header>
-      <main className="max-w-4xl mx-auto">{children}</main>
-    </div>
-  );
-
-  if (mini === 'inventory') {
-    return miniShell(
-      <InventoryCard
-        branchState={branchState}
-        setByBranch={setByBranch}
-        selectedBranchId={selectedBranchId}
-        ingresoStock={ingresoStock}
-        egresoStockManual={egresoStockManual}
-      />,
-      'Inventario'
-    );
-  }
-
-  if (mini === 'reports') {
-    return miniShell(
-      <ReportsCard
-        branchState={branchState}
-        selectedBranch={selectedBranch}
-        reportFilter={reportFilter}
-        setReportFilter={setReportFilter}
-        reportData={reportData}
-      />,
-      'Reportes'
-    );
-  }
-
-  if (mini === 'config') {
-    return miniShell(
-      <div className="bg-white rounded-2xl shadow-sm border p-4">
-        ...
-      </div>,
-      'Configuración'
-    );
-  }
-
-  if (mini === 'users') {
-    return miniShell(
-      <div className="bg-white rounded-2xl shadow-sm border p-4">
-        ...
-      </div>,
-      'Usuarios'
-    );
-  }
-}
+  /* =============================
+     Vista normal (con modales)
+     ============================= */
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900">
       {/* Top bar */}
@@ -602,13 +514,11 @@ if (mini && authUser) {
                   return copy;
                 })}
                 className="px-3 py-1.5 rounded-xl bg-white border shadow-sm text-sm hover:bg-neutral-50"
-              >
-                + Mesa
-              </button>
+              >+ Mesa</button>
             </div>
           </div>
 
-          {/* Reja de mesas */}
+          {/* Grilla de mesas */}
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
             {(branchState.tables || []).map((t) => (
               <MesaCard
@@ -616,7 +526,7 @@ if (mini && authUser) {
                 table={t}
                 config={config}
                 onStart={() => startTable(t.id)}
-                onStop={() => stopTable(t.id)}
+                onStop={(imprimir) => stopTable(t.id, { imprimir })}
                 onRename={(name) => updateByBranch((prev) => {
                   const copy = deepClone(prev);
                   const tab = (copy[selectedBranchId] ||= deepClone(branchState)).tables.find((x) => x.id === t.id);
@@ -624,8 +534,8 @@ if (mini && authUser) {
                   return copy;
                 })}
                 inventory={branchState.inventory}
-                onAddItem={(itemId) => addItemToTable(t.id, itemId)}
-                onRemoveItem={(itemId) => removeItemFromTable(t.id, itemId)}
+                onAddItem={(itemId)  => addItemToTable(t.id, itemId)}
+                onRemoveItem={(itemId)=> removeItemFromTable(t.id, itemId)}
                 onCustomerChange={(name) => updateByBranch((prev) => {
                   const copy = deepClone(prev);
                   const tab = (copy[selectedBranchId] ||= deepClone(branchState)).tables.find((x) => x.id === t.id);
@@ -641,187 +551,151 @@ if (mini && authUser) {
           </div>
         </section>
 
-        {/* Lateral: 4 accesos (cada uno abre una ventana emergente) */}
-<section className="space-y-3">
-  <div className="bg-white rounded-2xl shadow-sm border p-4">
-    <h3 className="font-semibold mb-2">Accesos rápidos</h3>
-    <div className="grid grid-cols-1 gap-2">
+        {/* Panel derecho: 4 botones para abrir MODALES */}
+        <section className="space-y-3">
+          <div className="bg-white rounded-2xl shadow-sm border p-4">
+            <h3 className="font-semibold mb-2">Accesos rápidos</h3>
+            <div className="grid grid-cols-1 gap-2">
+              <button onClick={() => setShowInventory(true)} className="px-3 py-2 rounded-xl bg-white border shadow-sm text-left hover:bg-neutral-50">
+                📦 Inventario
+                <div className="text-xs text-neutral-500">Abrir como modal</div>
+              </button>
+              <button onClick={() => setShowReports(true)} className="px-3 py-2 rounded-xl bg-white border shadow-sm text-left hover:bg-neutral-50">
+                📈 Reportes
+                <div className="text-xs text-neutral-500">Abrir como modal</div>
+              </button>
+              <button onClick={() => setShowConfig(true)} className="px-3 py-2 rounded-xl bg-white border shadow-sm text-left hover:bg-neutral-50">
+                ⚙️ Configuración
+                <div className="text-xs text-neutral-500">Abrir como modal</div>
+              </button>
+              {authUser.role === 'Administrador' && (
+                <button onClick={() => setShowUsers(true)} className="px-3 py-2 rounded-xl bg-white border shadow-sm text-left hover:bg-neutral-50">
+                  👤 Usuarios
+                  <div className="text-xs text-neutral-500">Abrir como modal</div>
+                </button>
+              )}
+            </div>
+          </div>
 
-      <button
-        onClick={() => openPopup('inventory')}
-        className="px-3 py-2 rounded-xl bg-white border shadow-sm text-left hover:bg-neutral-50"
-      >
-        📦 Inventario
-        <div className="text-xs text-neutral-500">Abrir ventana emergente</div>
-      </button>
+          {/* TARIFAS */}
+          <div className="bg-white rounded-2xl shadow-sm border p-4">
+            <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Tarifas</h3></div>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <label className="flex flex-col"><span>Tarifa (Bs/h)</span><input type="number" className="border rounded-lg px-2 py-1" value={config.ratePerHour} onChange={(e) => setConfig((c) => ({ ...c, ratePerHour: Number(e.target.value) }))} /></label>
+              <label className="flex flex-col"><span>Fracción (min)</span><input type="number" className="border rounded-lg px-2 py-1" value={config.fractionMinutes} onChange={(e) => setConfig((c) => ({ ...c, fractionMinutes: Number(e.target.value) }))} /></label>
+              <label className="flex flex-col"><span>Mínimo (min)</span><input type="number" className="border rounded-lg px-2 py-1" value={config.minMinutes} onChange={(e) => setConfig((c) => ({ ...c, minMinutes: Number(e.target.value) }))} /></label>
+              <label className="flex items-center justify-between"><span>Redondeo 0.49/0.50</span><input type="checkbox" checked={config.roundingEnabled} onChange={(e) => setConfig((c) => ({ ...c, roundingEnabled: e.target.checked }))} /></label>
+            </div>
+          </div>
 
-      <button
-        onClick={() => openPopup('reports')}
-        className="px-3 py-2 rounded-xl bg-white border shadow-sm text-left hover:bg-neutral-50"
-      >
-        📈 Reportes
-        <div className="text-xs text-neutral-500">Abrir ventana emergente</div>
-      </button>
-
-      <button
-        onClick={() => openPopup('config')}
-        className="px-3 py-2 rounded-xl bg-white border shadow-sm text-left hover:bg-neutral-50"
-      >
-        ⚙️ Configuración
-        <div className="text-xs text-neutral-500">Abrir ventana emergente</div>
-      </button>
-
-      {authUser.role === 'Administrador' && (
-        <button
-          onClick={() => openPopup('users')}
-          className="px-3 py-2 rounded-xl bg-white border shadow-sm text-left hover:bg-neutral-50"
-        >
-          👤 Usuarios
-          <div className="text-xs text-neutral-500">Abrir ventana emergente</div>
-        </button>
-      )}
-    </div>
-  </div>
-
-  {/* (Opcional) si quieres mantener “Tarifas” y “Caja” visibles aquí,
-      puedes volver a pegarlas debajo de este bloque. Si no, deja solo los 4 botones. */}
-  {/* === TARIFAS === */}
-<div className="bg-white rounded-2xl shadow-sm border p-4">
-  <div className="flex items-center justify-between mb-2">
-    <h3 className="font-semibold">Tarifas</h3>
-  </div>
-
-  <div className="grid grid-cols-2 gap-2 text-sm">
-    <label className="flex flex-col">
-      <span>Tarifa (Bs/h)</span>
-      <input
-        type="number"
-        className="border rounded-lg px-2 py-1"
-        value={config.ratePerHour}
-        onChange={(e) => setConfig((c) => ({ ...c, ratePerHour: Number(e.target.value) }))}
-      />
-    </label>
-
-    <label className="flex flex-col">
-      <span>Fracción (min)</span>
-      <input
-        type="number"
-        className="border rounded-lg px-2 py-1"
-        value={config.fractionMinutes}
-        onChange={(e) => setConfig((c) => ({ ...c, fractionMinutes: Number(e.target.value) }))}
-      />
-    </label>
-
-    <label className="flex flex-col">
-      <span>Mínimo (min)</span>
-      <input
-        type="number"
-        className="border rounded-lg px-2 py-1"
-        value={config.minMinutes}
-        onChange={(e) => setConfig((c) => ({ ...c, minMinutes: Number(e.target.value) }))}
-      />
-    </label>
-
-    <label className="flex items-center justify-between">
-      <span>Redondeo (0.49/0.50)</span>
-      <input
-        type="checkbox"
-        checked={config.roundingEnabled}
-        onChange={(e) => setConfig((c) => ({ ...c, roundingEnabled: e.target.checked }))}
-      />
-    </label>
-  </div>
-</div>
-  {/* === CAJA === */}
-<div className="bg-white rounded-2xl shadow-sm border p-4">
-  <div className="flex items-center justify-between mb-2">
-    <h3 className="font-semibold">Caja</h3>
-  </div>
-
-  {!branchState.cash.currentShift ? (
-    <div className="space-y-3">
-      <div className="flex gap-2">
-        <input
-          type="number"
-          placeholder="Saldo inicial"
-          className="border rounded-lg px-2 py-1 text-sm"
-          onKeyDown={(e) => {
-            if (e.key === "Enter") abrirCaja(e.currentTarget.value);
-          }}
-        />
-        <button
-          className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-sm"
-          onClick={() => {
-            const v = prompt("Saldo inicial de caja:", "0");
-            if (v != null) abrirCaja(Number(v));
-          }}
-        >
-          Abrir
-        </button>
-      </div>
-    </div>
-  ) : (
-    <div className="text-sm">
-      <div className="flex justify-between">
-        <span>Inicio:</span>
-        <span>{fmtTime(branchState.cash.currentShift.openedAt)}</span>
-      </div>
-      <div className="flex justify-between">
-        <span>Inicial:</span>
-        <span>{bs(branchState.cash.currentShift.initialCash)}</span>
-      </div>
-      <div className="flex justify-between">
-        <span>Ingresos:</span>
-        <span>{bs(cajaResumen?.ingresos || 0)}</span>
-      </div>
-      <div className="flex justify-between">
-        <span>Egresos:</span>
-        <span>{bs(cajaResumen?.egresos || 0)}</span>
-      </div>
-      <div className="flex justify-between font-semibold">
-        <span>Total caja:</span>
-        <span>{bs(cajaResumen?.totalCaja || 0)}</span>
-      </div>
-
-      <div className="flex gap-2 mt-2">
-        <button
-          className="px-3 py-1.5 rounded-xl bg-white border shadow-sm text-sm"
-          onClick={() => {
-            const c = prompt("Concepto del ingreso:");
-            if (!c) return;
-            const a = prompt("Monto (Bs):", "0");
-            if (a != null) movimientoCaja("ingreso", c, Number(a));
-          }}
-        >
-          + Ingreso
-        </button>
-
-        <button
-          className="px-3 py-1.5 rounded-xl bg-white border shadow-sm text-sm"
-          onClick={() => {
-            const c = prompt("Concepto del egreso:");
-            if (!c) return;
-            const a = prompt("Monto (Bs):", "0");
-            if (a != null) movimientoCaja("egreso", c, Number(a));
-          }}
-        >
-          - Egreso
-        </button>
-
-        <button
-          className="ml-auto px-3 py-1.5 rounded-xl bg-rose-600 text-white text-sm"
-          onClick={cerrarCaja}
-        >
-          Cerrar turno
-        </button>
-      </div>
-    </div>
-  )}
-</div>
-</section>
+          {/* CAJA */}
+          <div className="bg-white rounded-2xl shadow-sm border p-4">
+            <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Caja</h3></div>
+            {!branchState.cash.currentShift ? (
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <input type="number" placeholder="Saldo inicial" className="border rounded-lg px-2 py-1 text-sm" onKeyDown={(e) => { if (e.key === "Enter") abrirCaja(e.currentTarget.value); }} />
+                  <button className="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-sm" onClick={() => { const v = prompt("Saldo inicial de caja:", "0"); if (v != null) abrirCaja(Number(v)); }}>Abrir</button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm">
+                <div className="flex justify-between"><span>Inicio:</span><span>{fmtTime(branchState.cash.currentShift.openedAt)}</span></div>
+                <div className="flex justify-between"><span>Inicial:</span><span>{bs(branchState.cash.currentShift.initialCash)}</span></div>
+                <div className="flex justify-between"><span>Ingresos:</span><span>{bs(cajaResumen?.ingresos || 0)}</span></div>
+                <div className="flex justify-between"><span>Egresos:</span><span>{bs(cajaResumen?.egresos || 0)}</span></div>
+                <div className="flex justify-between font-semibold"><span>Total caja:</span><span>{bs(cajaResumen?.totalCaja || 0)}</span></div>
+                <div className="flex gap-2 mt-2">
+                  <button className="px-3 py-1.5 rounded-xl bg-white border shadow-sm text-sm" onClick={() => { const c = prompt("Concepto del ingreso:"); if (!c) return; const a = prompt("Monto (Bs):", "0"); if (a != null) movimientoCaja("ingreso", c, Number(a)); }}>+ Ingreso</button>
+                  <button className="px-3 py-1.5 rounded-xl bg-white border shadow-sm text-sm" onClick={() => { const c = prompt("Concepto del egreso:"); if (!c) return; const a = prompt("Monto (Bs):", "0"); if (a != null) movimientoCaja("egreso", c, Number(a)); }}>- Egreso</button>
+                  <button className="ml-auto px-3 py-1.5 rounded-xl bg-rose-600 text-white text-sm" onClick={cerrarCaja}>Cerrar turno</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
       </main>
 
-      {/* Impresión: Ticket 80 mm */}
+      {/* MODALES ===================================================== */}
+      {showInventory && (
+        <Modal title="Inventario" onClose={() => setShowInventory(false)}>
+          <InventoryCard
+            branchState={branchState}
+            setByBranch={setByBranch}
+            selectedBranchId={selectedBranchId}
+            ingresoStock={ingresoStock}
+            egresoStockManual={egresoStockManual}
+          />
+        </Modal>
+      )}
+
+      {showReports && (
+        <Modal title="Reportes" onClose={() => setShowReports(false)}>
+          <ReportsCard
+            branchState={branchState}
+            selectedBranch={selectedBranch}
+            reportFilter={reportFilter}
+            setReportFilter={setReportFilter}
+            reportData={reportData}
+            onReprint={(s) => openTicket(s, s.branchName || selectedBranch?.name)}
+          />
+        </Modal>
+      )}
+
+      {showConfig && (
+        <Modal title="Configuración" onClose={() => setShowConfig(false)}>
+          <div className="grid grid-cols-1 gap-2 text-sm">
+            <label className="flex items-center justify-between gap-2">
+              <span>Impresión directa (agente ESC/POS)</span>
+              <input type="checkbox" checked={config.agentPrintEnabled} onChange={(e) => setConfig((c) => ({ ...c, agentPrintEnabled: e.target.checked }))} />
+            </label>
+            <label className="flex items-center justify-between gap-2">
+              <span>PIN de supervisor</span>
+              <input type="password" className="border rounded-lg px-2 py-1" value={config.supervisorPin} onChange={(e) => setConfig((c) => ({ ...c, supervisorPin: e.target.value }))} />
+            </label>
+            <label className="flex flex-col">
+              <span>Encabezado de ticket</span>
+              <input className="border rounded-lg px-2 py-1" value={config.ticketHeader} onChange={(e) => setConfig((c) => ({ ...c, ticketHeader: e.target.value }))} placeholder="Ej.: BILLAR JADE — Sucursal Centro" />
+            </label>
+            <label className="flex flex-col">
+              <span>Logo del ticket (PNG/JPG)</span>
+              <input type="file" accept="image/*" onChange={(e) => handleLogoUpload(e, setConfig)} />
+            </label>
+            {config.ticketLogo && <img src={config.ticketLogo} alt="Logo" className="h-16 object-contain border rounded p-1" />}
+          </div>
+        </Modal>
+      )}
+
+      {showUsers && (
+        <Modal title="Usuarios" onClose={() => setShowUsers(false)}>
+          {authUser.role !== 'Administrador' ? (
+            <div className="text-sm">Solo el Administrador puede gestionar usuarios.</div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex justify-end">
+                <button className="px-2 py-1 text-xs rounded-lg bg-sky-50 text-sky-700 border" onClick={createUser}>+ Usuario</button>
+              </div>
+              <div className="space-y-1 max-h-[70vh] overflow-auto pr-1 text-sm">
+                {(users || []).map((u) => (
+                  <div key={u.id} className="grid grid-cols-12 gap-2 items-center border rounded-xl p-2">
+                    <div className="col-span-3">{u.username}</div>
+                    <div className="col-span-2">{u.role}</div>
+                    <div className="col-span-3">Sucursal: {branches.find((b) => b.id === u.branchId)?.name || u.branchId}</div>
+                    <div className="col-span-2">{u.active ? 'Activo' : 'Inactivo'}</div>
+                    <div className="col-span-2 flex gap-1 justify-end">
+                      <button className="px-2 py-1 text-xs rounded-lg bg-white border" onClick={() => changePassword(u)}>Cambiar clave</button>
+                      <button className="px-2 py-1 text-xs rounded-lg bg-white border" onClick={() => toggleUser(u)}>{u.active ? 'Desactivar' : 'Activar'}</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </Modal>
+      )}
+      {/* ============================================================ */}
+
+      {/* Impresión 80mm */}
       <div aria-hidden className="print:block hidden">
         <div id="ticket" className="ticket w-[80mm] p-3 text-sm font-mono">
           {ticketData && (<Ticket80mm data={ticketData} config={config} />)}
@@ -840,6 +714,9 @@ if (mini && authUser) {
   );
 }
 
+/* =============================
+   Componentes UI
+   ============================= */
 function Clock({ tick }){
   return (
     <div className="text-right">
@@ -854,19 +731,20 @@ function MesaCard({
   inventory, onAddItem, onRemoveItem, onCustomerChange,
   onPauseResume, onMove, onItemDiscount, onMesaDiscount
 }) {
-  const start = table?.session?.start
-  const pausedMs = table?.session?.pausedMs
-  const isPaused = table?.session?.isPaused
-  const pausedAt = table?.session?.pausedAt
-  const [t, setT] = useState(0)
-  const [showPicker, setShowPicker] = useState(false)
+  const start    = table?.session?.start;
+  const pausedMs = table?.session?.pausedMs;
+  const isPaused = table?.session?.isPaused;
+  const pausedAt = table?.session?.pausedAt;
 
-  useEffect(() => { const i = setInterval(() => setT(Date.now()), 1000); return () => clearInterval(i) }, [])
+  const [t, setT] = useState(0);
+  const [showPicker, setShowPicker] = useState(false);
+
+  useEffect(() => { const i = setInterval(() => setT(Date.now()), 1000); return () => clearInterval(i); }, []);
   const tarifa = useMemo(() => {
     if (!table.session) return null;
     const extraPause = isPaused ? (Date.now() - (pausedAt || Date.now())) : 0;
     return computeCharge({
-      start: start, end: Date.now(),
+      start, end: Date.now(),
       ratePerHour: config.ratePerHour, minMinutes: config.minMinutes, fractionMinutes: config.fractionMinutes,
       pausedMs: (pausedMs || 0) + extraPause
     });
@@ -889,7 +767,7 @@ function MesaCard({
       {table.status === "ocupada" && table.session && (
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-2 text-sm">
-            {/* Columna izquierda */}
+            {/* Izquierda */}
             <div className="bg-white rounded-xl p-2 border">
               <div className="flex justify-between"><span>Inicio</span><b>{fmtTime(table.session.start)}</b></div>
               <div className="flex justify-between">
@@ -913,21 +791,16 @@ function MesaCard({
               </div>
             </div>
 
-            {/* Columna derecha */}
+            {/* Derecha */}
             <div className="bg-white rounded-xl p-2 border">
               <div className="font-medium mb-1">Cliente</div>
-              <input
-                className="w-full border rounded-lg px-2 py-1 text-sm mb-2"
-                placeholder="Nombre del cliente (opcional)"
-                value={table.session.customerName}
-                onChange={(e) => onCustomerChange(e.target.value)}
-              />
+              <input className="w-full border rounded-lg px-2 py-1 text-sm mb-2" placeholder="Nombre del cliente (opcional)" value={table.session.customerName} onChange={(e) => onCustomerChange(e.target.value)} />
 
               <div className="font-medium mb-1">Productos</div>
               {/* Botón único para abrir modal */}
               <button className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm mb-2" onClick={() => setShowPicker(true)}>+ Producto</button>
 
-              {/* Lista de items actuales */}
+              {/* Listado actual */}
               <div className="space-y-1 max-h-28 overflow-auto pr-1">
                 {table.session.items.length === 0 && <div className="text-xs text-neutral-500">Sin productos</div>}
                 {table.session.items.map((it) => (
@@ -950,7 +823,7 @@ function MesaCard({
             <button className="px-3 py-1.5 rounded-xl bg-rose-600 text-white text-sm" onClick={() => onStop(true)}>Cerrar & imprimir</button>
           </div>
 
-          {/* Modal para agregar consumo */}
+          {/* Modal agregar consumo */}
           {showPicker && (
             <Modal title="Agregar consumo" onClose={() => setShowPicker(false)}>
               <ProductPicker
@@ -968,12 +841,12 @@ function MesaCard({
   );
 }
 
-// ======= Modal (incluido en este archivo) =======
+/* ===== Modal (inline) ===== */
 function Modal({ title = '', onClose, children }) {
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl w-[min(92vw,700px)] max-h-[88vh] overflow-auto p-4">
+      <div className="relative bg-white rounded-2xl shadow-xl w-[min(92vw,900px)] max-h-[88vh] overflow-auto p-4">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-lg font-semibold">{title}</h3>
           <button className="px-2 py-1 rounded-lg border" onClick={onClose}>✕</button>
@@ -984,7 +857,7 @@ function Modal({ title = '', onClose, children }) {
   );
 }
 
-// ======= Selector/Buscador de Productos (incluido en este archivo) =======
+/* ===== Selector de productos (inline) ===== */
 function ProductPicker({ inventory = [], onPick }) {
   const [q, setQ] = useState('');
   const list = useMemo(() => {
@@ -996,12 +869,7 @@ function ProductPicker({ inventory = [], onPick }) {
   return (
     <div>
       <div className="flex gap-2 mb-3">
-        <input
-          className="border rounded-lg px-3 py-2 w-full"
-          placeholder="Buscar producto..."
-          value={q}
-          onChange={e => setQ(e.target.value)}
-        />
+        <input className="border rounded-lg px-3 py-2 w-full" placeholder="Buscar producto..." value={q} onChange={e => setQ(e.target.value)} />
       </div>
 
       <div className="border rounded-xl overflow-hidden">
@@ -1011,11 +879,8 @@ function ProductPicker({ inventory = [], onPick }) {
           <div className="col-span-1 text-right">Stock</div>
           <div className="col-span-2 text-right">&nbsp;</div>
         </div>
-
         <div className="max-h-[50vh] overflow-auto">
-          {list.length === 0 && (
-            <div className="px-3 py-6 text-center text-sm text-neutral-500">Sin resultados</div>
-          )}
+          {list.length === 0 && <div className="px-3 py-6 text-center text-sm text-neutral-500">Sin resultados</div>}
           {list.map(it => (
             <div key={it.id} className="grid grid-cols-12 items-center px-3 py-2 border-b text-sm">
               <div className="col-span-7 truncate" title={it.name}>{it.name}</div>
@@ -1036,6 +901,7 @@ function ProductPicker({ inventory = [], onPick }) {
   );
 }
 
+/* ===== Inventario ===== */
 function InventoryCard({ branchState, setByBranch, selectedBranchId, ingresoStock, egresoStockManual }) {
   const [viewKardexFor, setViewKardexFor] = useState('');
   return (
@@ -1046,9 +912,9 @@ function InventoryCard({ branchState, setByBranch, selectedBranchId, ingresoStoc
           <button className="px-2 py-1 text-xs rounded-lg bg-sky-50 text-sky-700 border" onClick={() => {
             const name = prompt("Producto:"); if (!name) return;
             const price = Number(prompt("Precio venta (Bs):", "0") || 0);
-            const cost = Number(prompt("Precio real/costo (Bs):", "0") || 0);
+            const cost  = Number(prompt("Precio real/costo (Bs):", "0") || 0);
             const stock = Number(prompt("Stock inicial:", "0") || 0);
-            const unit = prompt("Unidad (u, bot, etc):", "u") || "u";
+            const unit  = prompt("Unidad (u, bot, etc):", "u") || "u";
             setByBranch((prev) => {
               const copy = deepClone(prev || {});
               (copy[selectedBranchId] ||= deepClone(branchState)).inventory.push({ id: uid("item"), name, price, cost, stock, unit });
@@ -1115,28 +981,27 @@ function InventoryCard({ branchState, setByBranch, selectedBranchId, ingresoStoc
   );
 }
 
-function ReportsCard({ branchState, selectedBranch, reportFilter, setReportFilter, reportData }){
+/* ===== Reportes ===== */
+function ReportsCard({ branchState, selectedBranch, reportFilter, setReportFilter, reportData, onReprint }){
   return (
     <div className="bg-white rounded-2xl shadow-sm border p-4">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="font-semibold">Reportes</h3>
-        <div className="flex flex-wrap gap-2 items-center text-sm">
-          <label className="flex items-center gap-1">Desde <input type="date" className="border rounded-lg px-2 py-1" value={reportFilter.from} onChange={(e) => setReportFilter((f) => ({ ...f, from: e.target.value }))} /></label>
-          <label className="flex items-center gap-1">Hasta <input type="date" className="border rounded-lg px-2 py-1" value={reportFilter.to} onChange={(e) => setReportFilter((f) => ({ ...f, to: e.target.value }))} /></label>
-          <select className="border rounded-lg px-2 py-1" value={reportFilter.cashier} onChange={(e) => setReportFilter((f) => ({ ...f, cashier: e.target.value }))}>
-            <option value="">Cajero (todos)</option>
-            {Array.from(new Set(branchState.sessions.map((s) => s.closedBy))).filter(Boolean).map((c) => <option key={c}>{c}</option>)}
-          </select>
-          <select className="border rounded-lg px-2 py-1" value={reportFilter.table} onChange={(e) => setReportFilter((f) => ({ ...f, table: e.target.value }))}>
-            <option value="">Mesa (todas)</option>
-            {Array.from(new Set(branchState.sessions.map((s) => s.tableName))).map((c) => <option key={c}>{c}</option>)}
-          </select>
-          <select className="border rounded-lg px-2 py-1" value={reportFilter.product} onChange={(e) => setReportFilter((f) => ({ ...f, product: e.target.value }))}>
-            <option value="">Producto (todos)</option>
-            {Array.from(new Set(branchState.sessions.flatMap((s) => s.items.map((i) => i.name)))).map((p) => <option key={p}>{p}</option>)}
-          </select>
-          <button className="px-3 py-1.5 rounded-xl bg-white border shadow-sm" onClick={() => exportReportCSV(branchState, reportData, reportFilter, selectedBranch?.name)}>Exportar CSV</button>
-        </div>
+      <div className="flex items-center justify-between mb-2"><h3 className="font-semibold">Reportes</h3></div>
+      <div className="flex flex-wrap gap-2 items-center text-sm mb-2">
+        <label className="flex items-center gap-1">Desde <input type="date" className="border rounded-lg px-2 py-1" value={reportFilter.from} onChange={(e) => setReportFilter((f) => ({ ...f, from: e.target.value }))} /></label>
+        <label className="flex items-center gap-1">Hasta <input type="date" className="border rounded-lg px-2 py-1" value={reportFilter.to} onChange={(e) => setReportFilter((f) => ({ ...f, to: e.target.value }))} /></label>
+        <select className="border rounded-lg px-2 py-1" value={reportFilter.cashier} onChange={(e) => setReportFilter((f) => ({ ...f, cashier: e.target.value }))}>
+          <option value="">Cajero (todos)</option>
+          {Array.from(new Set(branchState.sessions.map((s) => s.closedBy))).filter(Boolean).map((c) => <option key={c}>{c}</option>)}
+        </select>
+        <select className="border rounded-lg px-2 py-1" value={reportFilter.table} onChange={(e) => setReportFilter((f) => ({ ...f, table: e.target.value }))}>
+          <option value="">Mesa (todas)</option>
+          {Array.from(new Set(branchState.sessions.map((s) => s.tableName))).map((c) => <option key={c}>{c}</option>)}
+        </select>
+        <select className="border rounded-lg px-2 py-1" value={reportFilter.product} onChange={(e) => setReportFilter((f) => ({ ...f, product: e.target.value }))}>
+          <option value="">Producto (todos)</option>
+          {Array.from(new Set(branchState.sessions.flatMap((s) => s.items.map((i) => i.name)))).map((p) => <option key={p}>{p}</option>)}
+        </select>
+        <button className="px-3 py-1.5 rounded-xl bg-white border shadow-sm" onClick={() => exportReportCSV(branchState, reportData, reportFilter, selectedBranch?.name)}>Exportar CSV</button>
       </div>
 
       <div className="text-sm space-y-1">
@@ -1169,7 +1034,7 @@ function ReportsCard({ branchState, selectedBranch, reportFilter, setReportFilte
                 <div><b>Cerrado por:</b> {s.closedBy || "—"}</div>
               </div>
               <div className="mt-1 flex gap-2 justify-end">
-                <button className="px-2 py-1 text-xs rounded-lg bg-white border" onClick={() => openTicket(s, s.branchName || selectedBranch?.name)}>Reimprimir</button>
+                <button className="px-2 py-1 text-xs rounded-lg bg-white border" onClick={() => onReprint && onReprint(s)}>Reimprimir</button>
               </div>
             </div>
           ))}
@@ -1201,9 +1066,10 @@ function ReportsCard({ branchState, selectedBranch, reportFilter, setReportFilte
         </div>
       </details>
     </div>
-  )
+  );
 }
 
+/* ===== Ticket 80mm ===== */
 function Ticket80mm({ data, config }) {
   return (
     <div className="text-xs leading-5">
@@ -1245,6 +1111,7 @@ function Ticket80mm({ data, config }) {
   );
 }
 
+/* ===== Login ===== */
 function LoginScreen({ onLogin, onInitAdmin }) {
   const [u, setU] = useState(""); const [p, setP] = useState("");
   return (
@@ -1264,36 +1131,30 @@ function LoginScreen({ onLogin, onInitAdmin }) {
   );
 }
 
-// ======= Helpers (CSV) =======
+/* ===== Helpers ===== */
 function handleLogoUpload(e, setConfig) {
   const file = e.target.files?.[0]; if (!file) return;
   const reader = new FileReader();
   reader.onload = (ev) => setConfig((c) => ({ ...c, ticketLogo: String(ev.target?.result || '') }));
   reader.readAsDataURL(file);
 }
-
 function exportReportCSV(branchState, reportData, filter, branchName) {
-  const header = [
-    "Desde", "Hasta", "Sucursal", "Mesa", "Cliente", "Cajero", "Inicio", "Fin", "Tiempo (min)", "Tarifa (Bs)", "Prod. bruto", "Desc. ítems", "Desc. mesa", "Prod. neto", "Costo prod.", "Margen", "Total cobrado"
-  ];
+  const header = ["Desde","Hasta","Sucursal","Mesa","Cliente","Cajero","Inicio","Fin","Tiempo (min)","Tarifa (Bs)","Prod. bruto","Desc. ítems","Desc. mesa","Prod. neto","Costo prod.","Margen","Total cobrado"];
   const rows = reportData.sessions.map((s) => [
-    filter.from, filter.to, branchName || '', s.tableName, s.customerName || '', s.closedBy || '', fmtTime(s.start), fmtTime(s.end), s.tariff.rounded, to2(s.tariff.amount), to2(s.productosBruto), to2(s.productosDesc), to2(s.discountMesa), to2(s.productosNeto), to2(s.costoProductos), to2(s.margin), to2(s.total)
+    filter.from, filter.to, branchName || '', s.tableName, s.customerName || '', s.closedBy || '',
+    fmtTime(s.start), fmtTime(s.end), s.tariff.rounded, to2(s.tariff.amount), to2(s.productosBruto), to2(s.productosDesc),
+    to2(s.discountMesa), to2(s.productosNeto), to2(s.costoProductos), to2(s.margin), to2(s.total)
   ]);
   const csv = toCSV([header, ...rows]);
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob); const a = document.createElement("a");
   a.href = url; a.download = `reporte_${filter.from}_a_${filter.to}_${branchName || ''}.csv`; a.click(); URL.revokeObjectURL(url);
 }
-
 function exportClosureCSV(c) {
   const header = ["Sucursal","Apertura","Cierre","Abrió","Cerró","Inicial","Ingresos","Egresos","Total caja","Ventas (cant)","Ventas (Bs)"];
   const row = [
-    c.branchName || "",
-    new Date(c.openedAt).toLocaleString(),
-    new Date(c.closedAt).toLocaleString(),
-    c.openedBy || "",
-    c.closedBy || "",
-    to2(c.initialCash), to2(c.ingresos), to2(c.egresos), to2(c.totalCaja),
+    c.branchName || "", new Date(c.openedAt).toLocaleString(), new Date(c.closedAt).toLocaleString(),
+    c.openedBy || "", c.closedBy || "", to2(c.initialCash), to2(c.ingresos), to2(c.egresos), to2(c.totalCaja),
     c.ventasCount || 0, to2(c.ventasTotal || 0)
   ];
   const csv = toCSV([header, row]);
