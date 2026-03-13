@@ -962,7 +962,7 @@ return (
                 <span>Tarifa (Bs/h)</span>
                 <input
                   type="number"
-                  className="border border-white/30 bg-black/30 rounded-lg px-2 py-1"
+                  className="border border-neutral-300 bg-white rounded-lg px-2 py-1 text-neutral-900"
                   value={config.ratePerHour}
                   onChange={(e) =>
                     setConfig((c) => ({ ...c, ratePerHour: Number(e.target.value) }))
@@ -973,7 +973,7 @@ return (
                 <span>Fracción (min)</span>
                 <input
                   type="number"
-                  className="border border-white/30 bg-black/30 rounded-lg px-2 py-1"
+                  className="border border-neutral-300 bg-white rounded-lg px-2 py-1 text-neutral-900"
                   value={config.fractionMinutes}
                   onChange={(e) =>
                     setConfig((c) => ({ ...c, fractionMinutes: Number(e.target.value) }))
@@ -984,7 +984,7 @@ return (
                 <span>Mínimo (min)</span>
                 <input
                   type="number"
-                  className="border border-white/30 bg-black/30 rounded-lg px-2 py-1"
+                  className="border border-neutral-300 bg-white rounded-lg px-2 py-1 text-neutral-900"
                   value={config.minMinutes}
                   onChange={(e) =>
                     setConfig((c) => ({ ...c, minMinutes: Number(e.target.value) }))
@@ -1143,7 +1143,7 @@ return (
               <span>PIN de administrador</span>
               <input
                 type="password"
-                className="border border-white/30 bg-black/30 rounded-lg px-2 py-1"
+                className="border border-neutral-300 bg-white rounded-lg px-2 py-1 text-neutral-900"
                 value={config.supervisorPin}
                 onChange={(e) =>
                   setConfig((c) => ({ ...c, supervisorPin: e.target.value }))
@@ -1153,7 +1153,7 @@ return (
             <label className="flex flex-col">
               <span>Encabezado de ticket</span>
               <input
-                className="border border-white/30 bg-black/30 rounded-lg px-2 py-1"
+                className="border border-neutral-300 bg-white rounded-lg px-2 py-1 text-neutral-900"
                 value={config.ticketHeader}
                 onChange={(e) =>
                   setConfig((c) => ({ ...c, ticketHeader: e.target.value }))
@@ -1414,7 +1414,7 @@ function Modal({ title = "", onClose, children }) {
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl w-[min(92vw,900px)] max-h-[88vh] overflow-auto p-4">
+     <div className="relative bg-white text-neutral-900 rounded-2xl shadow-2xl ring-1 ring-black/10 w-[min(92vw,900px)] max-h-[88vh] overflow-auto p-4 modal-card">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-lg font-semibold">{title}</h3>
           <button className="px-2 py-1 rounded-lg border" onClick={onClose}>✕</button>
@@ -1635,7 +1635,7 @@ function ReportsCard({
           Desde
           <input
             type="date"
-            className="border rounded-lg px-2 py-1"
+            className="border border-neutral-300 bg-white rounded-lg px-2 py-1 text-neutral-900"
             value={reportFilter.from}
             onChange={(e) => setReportFilter((f) => ({ ...f, from: e.target.value }))}
           />
@@ -1644,13 +1644,13 @@ function ReportsCard({
           Hasta
           <input
             type="date"
-            className="border rounded-lg px-2 py-1"
+            className="border border-neutral-300 bg-white rounded-lg px-2 py-1 text-neutral-900"
             value={reportFilter.to}
             onChange={(e) => setReportFilter((f) => ({ ...f, to: e.target.value }))}
           />
         </label>
         <select
-          className="border rounded-lg px-2 py-1"
+          className="border border-neutral-300 bg-white rounded-lg px-2 py-1 text-neutral-900"
           value={reportFilter.cashier}
           onChange={(e) => setReportFilter((f) => ({ ...f, cashier: e.target.value }))}
         >
@@ -1662,7 +1662,7 @@ function ReportsCard({
             ))}
         </select>
         <select
-          className="border rounded-lg px-2 py-1"
+          className="border border-neutral-300 bg-white rounded-lg px-2 py-1 text-neutral-900"
           value={reportFilter.table}
           onChange={(e) => setReportFilter((f) => ({ ...f, table: e.target.value }))}
         >
@@ -1672,7 +1672,7 @@ function ReportsCard({
           ))}
         </select>
         <select
-          className="border rounded-lg px-2 py-1"
+          className="border border-neutral-300 bg-white rounded-lg px-2 py-1 text-neutral-900"
           value={reportFilter.product}
           onChange={(e) => setReportFilter((f) => ({ ...f, product: e.target.value }))}
         >
@@ -1684,7 +1684,7 @@ function ReportsCard({
           ))}
         </select>
         <button
-          className="px-3 py-1.5 rounded-xl bg-white border shadow-sm"
+          className="px-3 py-1.5 rounded-xl bg-white text-neutral-900 border border-neutral-300 shadow-sm hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-emerald-400/50"
           onClick={() =>
             exportReportCSV(branchState, reportData, reportFilter, selectedBranch?.name)
           }
